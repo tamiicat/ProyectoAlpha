@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Administrador - FYAG</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Fondo oscuro */
+        body { background-color: #3b4b5e; } 
+        .panel-card { border-radius: 15px; border: none; }
+        .btn-menu { background-color: #2b3d52; color: white; border-radius: 10px; border: none; font-weight: 500; }
+        .btn-menu:hover { background-color: #1a2533; color: white; }
+    </style>
+</head>
+<body class="d-flex align-items-center min-vh-100 py-4">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-6 col-lg-4 text-center">
+                
+                <!-- Tarjeta contenedora blanca -->
+                <div class="card shadow-lg p-4 panel-card">
+                    <!-- Logo Oficial -->
+                    <div class="mb-3">
+                        <img src="img/logo-fyag.png" alt="Logo FYAG" style="max-height: 90px; width: auto; object-fit: contain;">
+                    </div>
+                    
+                    <h5 class="fw-bold mb-4" style="color: #2b3d52;">Panel Administrador</h5>
+                    
+                    <!-- Menú de Módulos -->
+                    <div class="d-grid gap-3 px-2">
+                        <a href="#" class="btn btn-menu py-2 shadow-sm">Crear Cuenta</a>
+                        <a href="#" class="btn btn-menu py-2 shadow-sm">Gestión de Usuarios</a>
+                        <a href="#" class="btn btn-menu py-2 shadow-sm">Gestión de Inventario</a>
+                        <a href="#" class="btn btn-menu py-2 shadow-sm">Cardex</a>
+                        <a href="#" class="btn btn-menu py-2 shadow-sm">Gestión de Mermas</a>
+                        <a href="#" class="btn btn-menu py-2 shadow-sm">Módulo de Compras</a>
+                        <a href="#" class="btn btn-menu py-2 shadow-sm">Módulo de Despachos</a>
+                        <a href="#" class="btn btn-menu py-2 shadow-sm">Gestión de Obras</a>
+                    </div>
+                    
+                    <!-- Botón Cerrar Sesión -->
+                    <div class="mt-4">
+                        <a href="index.html" class="btn btn-outline-danger w-100 rounded-pill fw-bold">Cerrar Sesión</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</body>
+</html>
