@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escáner - FYAG</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        
+        /* Contenedor que simula la cámara */
+        .camera-container {
+            background-color: #1a1a1a;
+            height: 250px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        /* Cuadro de enfoque de la cámara */
+        .target-box {
+            width: 70%;
+            height: 60%;
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            position: absolute;
+        }
+        
+        /* Animación de láser rojo de lectura */
+        .scan-line {
+            width: 100%;
+            height: 2px;
+            background-color: #ff3b30;
+            position: absolute;
+            box-shadow: 0 0 8px #ff3b30;
+            animation: scan 2s infinite linear alternate;
+        }
+        
+        @keyframes scan {
+            0% { top: 15%; }
+            100% { top: 85%; }
+        }
+    </style>
+</head>
+<body class="py-4">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-6 col-lg-4">
+                
+                <!-- Botón de Navegación Superior -->
+                <div class="mb-4">
+                    <a href="bodeguero.html" class="btn btn-sm btn-outline-secondary fw-bold rounded-pill px-3">&larr; Volver al Panel</a>
+                </div>
+                
+                <h5 class="fw-bold mb-3" style="color: #2b3d52;">Escanear Artículo</h5>
+                <p class="text-muted small mb-4">Apunta la cámara al código de barras del producto para registrarlo en el sistema.</p>
+                
+                <!-- Simulación de Pantalla de Cámara -->
+                <div class="camera-container mb-4 shadow">
+                    <div class="target-box"></div>
+                    <div class="scan-line"></div>
+                    <span class="text-white opacity-50 small">Cámara Activa</span>
+                </div>
+                
+                <!-- Formulario de Resultados (Simula lo que lee la cámara) -->
+                <div class="card shadow-sm border-0" style="border-radius: 12px;">
+                    <div class="card-body p-4">
+                        <h6 class="fw-bold text-success mb-3">Lectura Detectada</h6>
+                        <form>
+                            <div class="mb-3">
+                                <label class="form-label small text-muted fw-bold">Código de Barras</label>
+                                <input type="text" class="form-control bg-light" value="789456123012" readonly>
+                            </div>
+                            <div class="mb-4">
+                                <label class="form-label small text-muted fw-bold">Producto Asignado</label>
+                                <input type="text" class="form-control bg-light" value="Filtro de Compresor Industrial" readonly>
+                            </div>
+                            <button type="button" class="btn w-100 rounded-pill fw-bold text-white mb-2" style="background-color: #2b3d52;">Confirmar Ingreso</button>
+                            <button type="button" class="btn btn-outline-danger w-100 rounded-pill fw-bold">Rechazar</button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</body>
+</html>
