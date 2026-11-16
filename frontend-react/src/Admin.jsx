@@ -3,52 +3,34 @@ import { Link } from 'react-router-dom';
 
 export default function Admin() {
     return (
-        <div className="min-vh-100 py-5" style={{ backgroundColor: '#081121' }}>
+        <div className="d-flex align-items-center min-vh-100 py-4" style={{ backgroundColor: '#3b4b5e' }}>
             <div className="container">
-                <div className="text-center mb-5">
-                    <h2 className="text-white fw-bold">Prototipo FYAG</h2>
-                    <p className="text-secondary">Selecciona un rol para navegar por el sistema</p>
-                </div>
-
-                <div className="row justify-content-center g-4">
-                    {/* Botón Admin / Inventario */}
-                    <div className="col-12 col-md-5">
-                        <Link to="/inventario" className="text-decoration-none">
-                            <div className="card h-100 bg-dark border-secondary shadow text-center p-4" style={{ borderRadius: '15px' }}>
-                                <h4 className="text-white mb-3">👨‍💼 Vista Administrador</h4>
-                                <p className="text-secondary small mb-0">Ver tarjetas semafóricas e inventario crítico</p>
+                <div className="row justify-content-center">
+                    <div className="col-12 col-md-6 col-lg-4 text-center">
+                        <div className="card shadow-lg p-4 panel-card">
+                            
+                            <div className="mb-3">
+                                {/* Asegúrate de mover tu carpeta "img" dentro de la carpeta "public" de React */}
+                                <img src="/img/logo-fyag.png" alt="Logo FYAG" style={{ maxHeight: '90px', width: 'auto', objectFit: 'contain' }} />
                             </div>
-                        </Link>
-                    </div>
-
-                    {/* Botón Bodeguero */}
-                    <div className="col-12 col-md-5">
-                        <Link to="/bodeguero" className="text-decoration-none">
-                            <div className="card h-100 bg-dark border-secondary shadow text-center p-4" style={{ borderRadius: '15px' }}>
-                                <h4 className="text-white mb-3">📦 Vista Bodeguero</h4>
-                                <p className="text-secondary small mb-0">Panel de gestión de almacén y logística</p>
+                            
+                            <h5 className="fw-bold mb-4" style={{ color: '#2b3d52' }}>Panel Administrador</h5>
+                            
+                            <div className="d-grid gap-3 px-2">
+                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Crear Cuenta</Link>
+                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Gestión de Usuarios</Link>
+                                <Link to="/inventario" className="btn btn-menu py-2 shadow-sm">Gestión de Inventario</Link>
+                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Cardex</Link>
+                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Gestión de Mermas</Link>
+                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Módulo de Compras</Link>
+                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Módulo de Despachos</Link>
+                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Gestión de Obras</Link>
                             </div>
-                        </Link>
-                    </div>
-
-                    {/* Botón Técnico */}
-                    <div className="col-12 col-md-5">
-                        <Link to="/tecnico" className="text-decoration-none">
-                            <div className="card h-100 bg-dark border-secondary shadow text-center p-4" style={{ borderRadius: '15px' }}>
-                                <h4 className="text-white mb-3">🧰 Vista Técnico</h4>
-                                <p className="text-secondary small mb-0">Interfaz móvil para operaciones en terreno</p>
+                            
+                            <div className="mt-4">
+                                <Link to="/" className="btn btn-outline-danger w-100 rounded-pill fw-bold">Cerrar Sesión</Link>
                             </div>
-                        </Link>
-                    </div>
-
-                    {/* Botón Escáner */}
-                    <div className="col-12 col-md-5">
-                        <Link to="/escaner" className="text-decoration-none">
-                            <div className="card h-100 bg-dark border-secondary shadow text-center p-4" style={{ borderRadius: '15px' }}>
-                                <h4 className="text-white mb-3">📷 Módulo Escáner</h4>
-                                <p className="text-secondary small mb-0">Simulación de cámara para lectura de códigos</p>
-                            </div>
-                        </Link>
+                        </div>
                     </div>
                 </div>
             </div>
