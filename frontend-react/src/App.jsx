@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Inventario from './Inventario';
 import Admin from './Admin';
 import Escaner from './Escaner';
+import Bodeguero from './Bodeguero';
+import Tecnico from './Tecnico';
 
 function App() {
   return (
@@ -10,6 +12,8 @@ function App() {
         <Route path="/" element={<Admin />} />
         <Route path="/inventario" element={<Inventario />} />
         <Route path="/escaner" element={<Escaner />} />
+        <Route path="/bodeguero" element={<Bodeguero />} />
+        <Route path="/tecnico" element={<Tecnico />} />
       </Routes>
     </BrowserRouter>
   );
