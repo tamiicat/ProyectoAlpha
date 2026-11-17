@@ -21,7 +21,7 @@ export default function Tecnico() {
                 <div className="bg-white p-5 border border-top-0 rounded-bottom">
                     <div className="d-flex flex-wrap justify-content-center gap-4">
                         <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '250px' }}>Solicitar Artículo a Bodega</Link>
-                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '250px' }}>Registrar Diagnóstico</Link>
+                        <Link to="/diagnostico" className="btn btn-menu py-3 shadow-sm" style={{ width: '250px' }}>Registrar Diagnóstico</Link>
                         <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '250px' }}>Enviar Reporte de Trabajo</Link>
                     </div>
                 </div>

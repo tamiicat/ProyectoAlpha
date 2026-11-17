@@ -17,6 +17,10 @@ import Recepcion from './Recepcion';
 import Despacho from './Despacho';
 import RegistrarMerma from './RegistrarMerma';
 import SolicitarArticulo from './SolicitarArticulo';
+import Diagnostico from './Diagnostico';
+import ReporteFinanciero from './ReporteFinanciero';
+import GestionFacturas from './GestionFacturas';
+import GestionProveedores from './GestionProveedores';
 
 export default function App() {
   return (
@@ -37,6 +41,10 @@ export default function App() {
         <Route path="/despacho" element={<Despacho />} />
         <Route path="/registrar-merma" element={<RegistrarMerma />} />
         <Route path="/solicitar-articulo" element={<SolicitarArticulo />} />
+        <Route path="/diagnostico" element={<Diagnostico />} />
+        <Route path="/reporte-financiero" element={<ReporteFinanciero />} />
+        <Route path="/gestion-facturas" element={<GestionFacturas />} />
+        <Route path="/gestion-proveedores" element={<GestionProveedores />} />
       </Routes>
     </BrowserRouter>
   );
