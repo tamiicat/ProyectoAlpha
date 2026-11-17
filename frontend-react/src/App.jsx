@@ -21,6 +21,7 @@ import Diagnostico from './Diagnostico';
 import ReporteFinanciero from './ReporteFinanciero';
 import GestionFacturas from './GestionFacturas';
 import GestionProveedores from './GestionProveedores';
+import Escaner from './Escaner';
 
 export default function App() {
   return (
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/reporte-financiero" element={<ReporteFinanciero />} />
         <Route path="/gestion-facturas" element={<GestionFacturas />} />
         <Route path="/gestion-proveedores" element={<GestionProveedores />} />
+        <Route path="/escaner" element={<Escaner />} />
       </Routes>
     </BrowserRouter>
   );

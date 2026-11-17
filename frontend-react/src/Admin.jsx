@@ -24,8 +24,7 @@ export default function Admin() {
                         </Link>
                     </div>
                 </div>
-
-                {/* Cuerpo Blanco con los 13 Botones de Tamara */}
+                {/* Contenedor de Botones */}
                 <div className="bg-white p-5 border border-top-0 rounded-bottom">
                     {/* Flexbox con flex-wrap permite que los botones se acomoden solos como en el diseño */}
                     <div className="d-flex flex-wrap justify-content-center gap-3">

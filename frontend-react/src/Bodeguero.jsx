@@ -5,7 +5,7 @@ export default function Bodeguero() {
     return (
         <div className="container mt-5 mb-5">
             <div className="shadow-lg" style={{ borderRadius: '25px', overflow: 'hidden' }}>
-                
+
                 <div className="d-flex flex-column flex-md-row justify-content-between align-items-center p-4 px-5" style={{ backgroundColor: '#2b3d52', color: 'white' }}>
                     <div className="d-flex align-items-center mb-3 mb-md-0">
                         <img src="/img/logo-fyag.png" alt="Logo FYAG" style={{ height: '70px', objectFit: 'contain' }} />
@@ -25,6 +25,7 @@ export default function Bodeguero() {
                         <Link to="/cardex" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px', fontSize: '1rem' }}>Cardex</Link>
                         <Link to="/recepcion" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px', fontSize: '1rem' }}>Recepción de Compra</Link>
                         <Link to="/despacho" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px', fontSize: '1rem' }}>Módulo de Despacho</Link>
+                        <Link to="/escaner" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px', fontSize: '1rem' }}>Escanear Código</Link>
                     </div>
                 </div>
             </div>
