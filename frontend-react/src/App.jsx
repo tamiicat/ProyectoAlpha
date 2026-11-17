@@ -15,6 +15,8 @@ import CrearCuenta from './CrearCuenta';
 import GestionarInventario from './GestionarInventario';
 import Recepcion from './Recepcion';
 import Despacho from './Despacho';
+import RegistrarMerma from './RegistrarMerma';
+import SolicitarArticulo from './SolicitarArticulo';
 
 export default function App() {
   return (
@@ -33,6 +35,8 @@ export default function App() {
         <Route path="/gestionar-inventario" element={<GestionarInventario />} />
         <Route path="/recepcion" element={<Recepcion />} />
         <Route path="/despacho" element={<Despacho />} />
+        <Route path="/registrar-merma" element={<RegistrarMerma />} />
+        <Route path="/solicitar-articulo" element={<SolicitarArticulo />} />
       </Routes>
     </BrowserRouter>
   );
