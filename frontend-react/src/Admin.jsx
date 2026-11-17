@@ -3,36 +3,50 @@ import { Link } from 'react-router-dom';
 
 export default function Admin() {
     return (
-        <div className="d-flex align-items-center min-vh-100 py-4" style={{ backgroundColor: '#3b4b5e' }}>
-            <div className="container">
-                <div className="row justify-content-center">
-                    <div className="col-12 col-md-6 col-lg-4 text-center">
-                        <div className="card shadow-lg p-4 panel-card">
-                            
-                            <div className="mb-3">
-                                {/* Asegúrate de mover tu carpeta "img" dentro de la carpeta "public" de React */}
-                                <img src="/img/logo-fyag.png" alt="Logo FYAG" style={{ maxHeight: '90px', width: 'auto', objectFit: 'contain' }} />
-                            </div>
-                            
-                            <h5 className="fw-bold mb-4" style={{ color: '#2b3d52' }}>Panel Administrador</h5>
-                            
-                            <div className="d-grid gap-3 px-2">
-                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Crear Cuenta</Link>
-                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Gestión de Usuarios</Link>
-                                <Link to="/inventario" className="btn btn-menu py-2 shadow-sm">Gestión de Inventario</Link>
-                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Cardex</Link>
-                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Gestión de Mermas</Link>
-                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Módulo de Compras</Link>
-                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Módulo de Despachos</Link>
-                                <Link to="#" className="btn btn-menu py-2 shadow-sm">Gestión de Obras</Link>
-                            </div>
-                            
-                            <div className="mt-4">
-                                <Link to="/" className="btn btn-outline-danger w-100 rounded-pill fw-bold">Cerrar Sesión</Link>
-                            </div>
-                        </div>
+        <div className="container mt-5 mb-5">
+            {/* Contenedor principal estilo Tarjeta */}
+            <div className="shadow-lg rounded" style={{ overflow: 'hidden' }}>
+                
+                {/* Cabecera Azul Oscuro */}
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-center p-4" style={{ backgroundColor: '#2b3d52', color: 'white' }}>
+                    <div className="d-flex align-items-center mb-3 mb-md-0">
+                        {/* Logo corregido: sin fondo gris y sin padding */}
+                        <img 
+                            src="/img/logo-fyag.png" 
+                            alt="Logo FYAG" 
+                            style={{ height: '70px', objectFit: 'contain' }} 
+                        />
+                        <h3 className="ms-4 mb-0 fw-bold">Panel Administrador</h3>
+                    </div>
+                    <div>
+                        <Link to="/" className="btn btn-light text-secondary fw-bold rounded-pill px-4">
+                            <i className="bi bi-box-arrow-right me-2"></i> Cerrar Sesión
+                        </Link>
                     </div>
                 </div>
+
+                {/* Cuerpo Blanco con los 13 Botones de Tamara */}
+                <div className="bg-white p-5 border border-top-0 rounded-bottom">
+                    {/* Flexbox con flex-wrap permite que los botones se acomoden solos como en el diseño */}
+                    <div className="d-flex flex-wrap justify-content-center gap-3">
+                        <Link to="/crear-cuenta" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Crear Cuenta</Link>
+                        <Link to="/gestion-usuarios" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Gestionar Usuarios</Link>
+                        <Link to="/inventario" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Ver Inventario</Link>
+                        <Link to="/gestionar-inventario" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Gestionar Inventario</Link>
+                        <Link to="/cardex" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Cardex</Link>
+                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Registrar Merma</Link>
+                        
+                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Ver Mermas</Link>
+                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Solicitar Artículo</Link>
+                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Diagnóstico</Link>
+                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Reportes</Link>
+                        
+                        <Link to="/despacho" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Módulo de Despacho</Link>
+                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Módulo de Compras</Link>
+                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Gestión de Obras</Link>
+                    </div>
+                </div>
+
             </div>
         </div>
     );

@@ -39,8 +39,6 @@ export default function Escaner() {
                                         <label className="form-label small text-muted fw-bold">Producto Asignado</label>
                                         <input type="text" className="form-control bg-light" value="Filtro de Compresor Industrial" readOnly />
                                     </div>
-                                    
-                                    {/* Botones de 48px según la rúbrica */}
                                     <button type="button" className="btn btn-success w-100 fw-bold mb-2" style={{ minHeight: '48px', borderRadius: '8px' }}>
                                         Confirmar Ingreso
                                     </button>

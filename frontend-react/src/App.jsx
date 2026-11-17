@@ -1,29 +1,39 @@
+import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
+// Importamos todas las vistas del sistema
 import Login from './Login';
 import Admin from './Admin';
 import Bodeguero from './Bodeguero';
 import Tecnico from './Tecnico';
+import Finanzas from './Finanzas';
+import Supervisor from './Supervisor';
+import GestionUsuarios from './GestionUsuarios';
 import Inventario from './Inventario';
-import Escaner from './Escaner';
+import Cardex from './Cardex';
+import CrearCuenta from './CrearCuenta';
+import GestionarInventario from './GestionarInventario';
+import Recepcion from './Recepcion';
+import Despacho from './Despacho';
 
-function App() {
+export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Ruta de autenticación principal */}
         <Route path="/" element={<Login />} />
-        
-        {/* Paneles de gestión por rol */}
         <Route path="/admin" element={<Admin />} />
         <Route path="/bodeguero" element={<Bodeguero />} />
         <Route path="/tecnico" element={<Tecnico />} />
-        
-        {/* Módulos de operabilidad y logística */}
+        <Route path="/finanzas" element={<Finanzas />} />
+        <Route path="/supervisor" element={<Supervisor />} />
+        <Route path="/gestion-usuarios" element={<GestionUsuarios />} />
         <Route path="/inventario" element={<Inventario />} />
-        <Route path="/escaner" element={<Escaner />} />
+        <Route path="/cardex" element={<Cardex />} />
+        <Route path="/crear-cuenta" element={<CrearCuenta />} />
+        <Route path="/gestionar-inventario" element={<GestionarInventario />} />
+        <Route path="/recepcion" element={<Recepcion />} />
+        <Route path="/despacho" element={<Despacho />} />
       </Routes>
     </BrowserRouter>
   );
 }
-
-export default App;

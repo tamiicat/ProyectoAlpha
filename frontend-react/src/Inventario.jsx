@@ -1,47 +1,78 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 export default function Inventario() {
-    const productos = [
-        { id: 1, nombre: "Filtro de Compresor Industrial", sku: "FLT-1004", stock: 8, estado: "critico" },
-        { id: 2, nombre: "Válvula de Presión 3/4", sku: "VAL-2099", stock: 25, estado: "medio" },
-        { id: 3, nombre: "Aceite Hidráulico (Tambor 20L)", sku: "ACE-500", stock: 120, estado: "optimo" }
-    ];
-
-    const getIndicador = (estado) => {
-        if (estado === 'critico') return { borde: 'border-danger', texto: 'text-danger' };
-        if (estado === 'medio') return { borde: 'border-warning', texto: 'text-warning' };
-        return { borde: 'border-success', texto: 'text-success' };
-    };
-
     return (
-        <div className="min-vh-100 py-4" style={{ backgroundColor: '#f8f9fa' }}>
-            <div className="container">
-                <div className="row justify-content-center">
-                    <div className="col-12 col-md-6 col-lg-4">
-                        <div className="mb-4">
-                            <h4 className="fw-bold mb-1" style={{ color: '#2b3d52' }}>Inventario en Terreno</h4>
-                            <p className="text-muted small">Vista móvil con semáforos de stock crítico.</p>
+        <div className="container-xl mt-5 mb-5">
+            <div className="shadow-lg" style={{ borderRadius: '25px', overflow: 'hidden' }}>
+                
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-center p-4 px-5" style={{ backgroundColor: '#2b3d52', color: 'white' }}>
+                    <div className="d-flex align-items-center mb-3 mb-md-0">
+                        <img src="/img/logo-fyag.png" alt="Logo FYAG" style={{ height: '60px', objectFit: 'contain' }} />
+                        <div className="ms-4">
+                            <h3 className="mb-0 fw-semibold">Inventario Registrado</h3>
+                            <span className="small opacity-75">Registro de artículos en inventario</span>
                         </div>
+                    </div>
+                    <div>
+                        <Link to="/admin" className="btn btn-outline-light rounded-pill px-4 fw-semibold">
+                            Volver al menú
+                        </Link>
+                    </div>
+                </div>
 
-                        {productos.map(producto => {
-                            const indicador = getIndicador(producto.estado);
-                            return (
-                                <div key={producto.id} className={`card shadow-sm mb-3 border-0 border-start border-5 ${indicador.borde}`} style={{ borderRadius: '12px' }}>
-                                    <div className="card-body p-3">
-                                        <div className="d-flex justify-content-between align-items-start mb-1">
-                                            <h6 className="fw-bold mb-0 text-truncate" style={{ maxWidth: '70%' }}>{producto.nombre}</h6>
-                                            <span className={`badge bg-light ${indicador.texto} border ${indicador.borde}`}>
-                                                Stock: {producto.stock}
-                                            </span>
-                                        </div>
-                                        <div className="text-muted small mb-3">SKU: {producto.sku}</div>
-                                        <button className="btn btn-outline-secondary w-100 fw-bold" style={{ minHeight: '48px', borderRadius: '8px' }}>
-                                            Actualizar Stock
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                <div className="bg-white p-4 p-md-5 border-top-0">
+                    <div className="row g-3 mb-4">
+                        <div className="col-12 col-md-6">
+                            <div className="input-group shadow-sm">
+                                <span className="input-group-text bg-white border-end-0"><i className="bi bi-search text-muted"></i></span>
+                                <input type="text" className="form-control border-start-0 ps-0" placeholder="Buscar por ID, nombre, categoría, ubicación..." />
+                            </div>
+                        </div>
+                        <div className="col-12 col-md-3">
+                            <select className="form-select shadow-sm text-muted">
+                                <option>Todas las categorías</option>
+                                <option>Climatización</option>
+                                <option>Herramientas</option>
+                            </select>
+                        </div>
+                        <div className="col-12 col-md-3">
+                            <select className="form-select shadow-sm text-muted">
+                                <option>Ordenar por</option>
+                                <option>Stock crítico</option>
+                                <option>Nombre (A-Z)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="table-responsive shadow-sm rounded border">
+                        <table className="table table-hover align-middle mb-0">
+                            <thead style={{ backgroundColor: '#f4f6f8', color: '#2b3d52' }}>
+                                <tr>
+                                    <th className="py-3 px-4">ID</th>
+                                    <th className="py-3">Nombre</th>
+                                    <th className="py-3">Código de Barras</th>
+                                    <th className="py-3 text-center">Stock Actual</th>
+                                    <th className="py-3 text-center">Stock Crítico</th>
+                                    <th className="py-3">Estado</th>
+                                    <th className="py-3 text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td className="px-4 fw-semibold text-muted">500</td>
+                                    <td>Aire Acondicionado</td>
+                                    <td>12034298034821</td>
+                                    <td className="text-center fw-bold text-success">45</td>
+                                    <td className="text-center text-danger">10</td>
+                                    <td><span className="badge bg-success bg-opacity-10 text-success border border-success">Disponible</span></td>
+                                    <td className="text-center">
+                                        <button className="btn btn-sm btn-light me-2 text-primary shadow-sm"><i className="bi bi-pencil-square"></i></button>
+                                        <button className="btn btn-sm btn-light text-danger shadow-sm"><i className="bi bi-trash"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
