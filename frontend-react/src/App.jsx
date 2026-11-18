@@ -2,29 +2,29 @@ import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 // Importamos todas las vistas del sistema
-import Login from './Login';
-import Admin from './Admin';
-import Bodeguero from './Bodeguero';
-import Tecnico from './Tecnico';
-import Finanzas from './Finanzas';
-import Supervisor from './Supervisor';
-import GestionUsuarios from './GestionUsuarios';
-import Inventario from './Inventario';
-import Cardex from './Cardex';
-import CrearCuenta from './CrearCuenta';
-import GestionarInventario from './GestionarInventario';
-import Recepcion from './Recepcion';
-import Despacho from './Despacho';
-import RegistrarMerma from './RegistrarMerma';
-import SolicitarArticulo from './SolicitarArticulo';
-import Diagnostico from './Diagnostico';
-import ReporteFinanciero from './ReporteFinanciero';
-import GestionFacturas from './GestionFacturas';
-import GestionProveedores from './GestionProveedores';
-import Escaner from './Escaner';
-import VerMermas from './VerMermas';
-import GestionObras from './GestionObras';
-import ModuloCompras from './ModuloCompras';
+import Login from './pages/auth/Login';
+import Admin from './pages/paneles/Admin';
+import Bodeguero from './pages/paneles/Bodeguero';
+import Tecnico from './pages/paneles/Tecnico';
+import Finanzas from './pages/paneles/Finanzas';
+import Supervisor from './pages/paneles/Supervisor';
+import GestionUsuarios from './pages/modulos/GestionUsuarios';
+import Inventario from './pages/modulos/Inventario';
+import Cardex from './pages/modulos/Cardex';
+import CrearCuenta from './pages/modulos/CrearCuenta';
+import GestionarInventario from './pages/modulos/GestionarInventario';
+import Recepcion from './pages/modulos/Recepcion';
+import Despacho from './pages/modulos/Despacho';
+import RegistrarMerma from './pages/modulos/RegistrarMerma';
+import SolicitarArticulo from './pages/modulos/SolicitarArticulo';
+import Diagnostico from './pages/modulos/Diagnostico';
+import ReporteFinanciero from './pages/modulos/ReporteFinanciero';
+import GestionFacturas from './pages/modulos/GestionFacturas';
+import GestionProveedores from './pages/modulos/GestionProveedores';
+import Escaner from './pages/modulos/Escaner';
+import VerMermas from './pages/modulos/VerMermas';
+import GestionObras from './pages/modulos/GestionObras';
+import ModuloCompras from './pages/modulos/ModuloCompras';
 
 export default function App() {
   return (
