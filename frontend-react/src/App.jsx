@@ -22,6 +22,8 @@ import ReporteFinanciero from './ReporteFinanciero';
 import GestionFacturas from './GestionFacturas';
 import GestionProveedores from './GestionProveedores';
 import Escaner from './Escaner';
+import VerMermas from './VerMermas';
+import GestionObras from './GestionObras';
 
 export default function App() {
   return (
@@ -47,6 +49,8 @@ export default function App() {
         <Route path="/gestion-facturas" element={<GestionFacturas />} />
         <Route path="/gestion-proveedores" element={<GestionProveedores />} />
         <Route path="/escaner" element={<Escaner />} />
+        <Route path="/ver-mermas" element={<VerMermas />} />
+        <Route path="/gestion-obras" element={<GestionObras />} />
       </Routes>
     </BrowserRouter>
   );

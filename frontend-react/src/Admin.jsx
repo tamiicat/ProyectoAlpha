@@ -35,14 +35,14 @@ export default function Admin() {
                         <Link to="/cardex" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Cardex</Link>
                         <Link to="/registrar-merma" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Registrar Merma</Link>
                         
-                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Ver Mermas</Link>
+                        <Link to="/ver-mermas" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Ver Mermas</Link>
                         <Link to="/solicitar-articulo" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Solicitar Artículo</Link>
                         <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Diagnóstico</Link>
                         <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Reportes</Link>
                         
                         <Link to="/despacho" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Módulo de Despacho</Link>
                         <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Módulo de Compras</Link>
-                        <Link to="#" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Gestión de Obras</Link>
+                        <Link to="/gestion-obras" className="btn btn-menu py-3 shadow-sm" style={{ width: '220px' }}>Gestión de Obras</Link>
                     </div>
                 </div>
 
