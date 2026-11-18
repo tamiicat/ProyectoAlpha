@@ -24,17 +24,23 @@ import GestionProveedores from './GestionProveedores';
 import Escaner from './Escaner';
 import VerMermas from './VerMermas';
 import GestionObras from './GestionObras';
+import ModuloCompras from './ModuloCompras';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Ruta principal: Login */}
         <Route path="/" element={<Login />} />
+
+        {/* Paneles por rol */}
         <Route path="/admin" element={<Admin />} />
         <Route path="/bodeguero" element={<Bodeguero />} />
         <Route path="/tecnico" element={<Tecnico />} />
         <Route path="/finanzas" element={<Finanzas />} />
         <Route path="/supervisor" element={<Supervisor />} />
+
+        {/* Módulos del sistema */}
         <Route path="/gestion-usuarios" element={<GestionUsuarios />} />
         <Route path="/inventario" element={<Inventario />} />
         <Route path="/cardex" element={<Cardex />} />
@@ -51,6 +57,7 @@ export default function App() {
         <Route path="/escaner" element={<Escaner />} />
         <Route path="/ver-mermas" element={<VerMermas />} />
         <Route path="/gestion-obras" element={<GestionObras />} />
+        <Route path="/modulo-compras" element={<ModuloCompras />} />
       </Routes>
     </BrowserRouter>
   );
