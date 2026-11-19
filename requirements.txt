@@ -1,0 +1,7 @@
+PyJWT>=2.8.0
+bcrypt>=4.1.0
+cryptography>=42.0.0
+bleach>=6.1.0
+Django>=5.0.0
+pytest>=8.0.0
+flake8>=7.0.0

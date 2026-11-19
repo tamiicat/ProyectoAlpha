@@ -1,0 +1,61 @@
+{
+  // Fondo personalizado
+  "background.enabled": true,
+  "background.useDefault": false,
+  "background.customImages": [
+    "file:///C:/Users/crist/OneDrive/Imágenes/VRChat/imagenes/36e7f375-43b1-4e90-984e-628655de0bab.png"
+  ],
+  "background.style": {
+    "content": "''",
+    "pointer-events": "none",
+    "position": "absolute",
+    "z-index": "99999",
+    "width": "100%",
+    "height": "100%",
+    "background-position": "center",
+    "background-repeat": "no-repeat",
+    "background-size": "cover",
+    "opacity": 0.13
+  },
+  // Fuente y estilo
+  "editor.fontFamily": "Fira Code, Consolas, 'Courier New', monospace",
+  "editor.fontLigatures": true,
+  "editor.fontSize": 14,
+  // Tema (puedes cambiarlo o instalar uno desde el marketplace)
+  "workbench.statusBar.visible": true,
+  "workbench.sideBar.location": "left",
+  "python.defaultInterpreterPath": "C:\\Users\\crist\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+  "explorer.confirmDelete": false,
+  "workbench.editor.empty.hint": "hidden",
+  "workbench.iconTheme": "vscode-icons",
+  "[css]": {
+    "editor.defaultFormatter": "HookyQR.beautify"
+  },
+  "[html]": {
+    "editor.defaultFormatter": "HookyQR.beautify"
+  },
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
+  "[javascript]": {
+    "editor.defaultFormatter": "HookyQR.beautify"
+  },
+  "grunt.autoDetect": "on",
+  "gulp.autoDetect": "on",
+  "files.autoSave": "afterDelay",
+  "claudeCode.preferredLocation": "panel",
+  "editor.renderValidationDecorations": "off",
+  "problems.decorations.enabled": false,
+  "python.analysis.typeCheckingMode": "off",
+  "python.analysis.diagnosticMode": "none",
+  "flake8.enabled": false
+  "python.analysis.extraPaths": ["."],
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingImports": "none",
+    "reportMissingModuleSource": "none",
+    "reportUnusedImport": "none",
+    "reportUnusedVariable": "none",
+    "reportUndefinedVariable": "none",
+    "reportGeneralTypeIssues": "none"
+  },
+  "json.validate.enable": false,
+  "python.terminal.useEnvFile": true
+}
