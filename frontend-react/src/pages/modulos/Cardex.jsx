@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api'; // <-- Paso 3: importar el servicio del paso 2
 
 export default function Cardex() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo alineados a la tabla Cardex (luego vendrán de Django: GET /cardex)
+    // Datos de respaldo por si Django todavía no está encendido
     const movimientosMock = [
         {
             id_cardex: 9021,
@@ -64,10 +65,30 @@ export default function Cardex() {
         }
     ];
 
+    // <-- Paso 3: ahora los movimientos viven en un estado para poder llenarlos desde Django
+    const [movimientos, setMovimientos] = useState([]);
+    const [cargando, setCargando] = useState(true);
     const [busqueda, setBusqueda] = useState('');
     const [filtroTipo, setFiltroTipo] = useState('');
-    const [movimientoSeleccionado, setMovimientoSeleccionado] = useState(movimientosMock[0]);
+    const [movimientoSeleccionado, setMovimientoSeleccionado] = useState(null);
     const [modoImpresion, setModoImpresion] = useState('ficha'); // 'ficha' | 'historial'
+
+    // <-- Paso 3: pedir los datos reales a Django al abrir la pantalla
+    useEffect(() => {
+        apiFetch('/cardex/')
+            .then((data) => {
+                setMovimientos(data);
+                if (data.length > 0) setMovimientoSeleccionado(data[0]);
+            })
+            .catch((err) => {
+                console.warn('No se pudo conectar con Django, usando datos de prueba:', err.message);
+                setMovimientos(movimientosMock);
+                setMovimientoSeleccionado(movimientosMock[0]);
+            })
+            .finally(() => {
+                setCargando(false);
+            });
+    }, []);
 
     const formatearCLP = (valor) => {
         return new Intl.NumberFormat('es-CL', {
@@ -87,7 +108,8 @@ export default function Cardex() {
         return estilos[tipo] || 'bg-secondary bg-opacity-10 text-secondary border-secondary';
     };
 
-    const movimientosFiltrados = movimientosMock.filter((mov) => {
+    // <-- Paso 3: ahora se filtra sobre "movimientos" (no sobre "movimientosMock")
+    const movimientosFiltrados = movimientos.filter((mov) => {
         const coincideTipo = filtroTipo === '' || mov.tipo_movimiento === filtroTipo;
         const termino = busqueda.toLowerCase();
         const coincideBusqueda =
@@ -190,7 +212,13 @@ export default function Cardex() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {movimientosFiltrados.length === 0 ? (
+                                {cargando ? (
+                                    <tr>
+                                        <td colSpan="9" className="text-center py-4 text-muted">
+                                            Cargando movimientos del Cardex...
+                                        </td>
+                                    </tr>
+                                ) : movimientosFiltrados.length === 0 ? (
                                     <tr>
                                         <td colSpan="9" className="text-center py-4 text-muted">
                                             No se encontraron movimientos con los filtros aplicados.
@@ -274,7 +302,7 @@ export default function Cardex() {
                         </div>
                     </div>
 
-                    {/* Cuerpo del Comprobante (estilo ficha de Despacho/Recepción) */}
+                    {/* Cuerpo del Comprobante */}
                     <div className="p-4 p-md-5">
                         <div className="row g-4">
                             <div className="col-12 col-md-6 border-end pe-md-4">
