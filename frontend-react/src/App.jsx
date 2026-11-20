@@ -1,7 +1,6 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-// Importamos todas las vistas del sistema
 import Login from './pages/auth/Login';
 import Admin from './pages/paneles/Admin';
 import Bodeguero from './pages/paneles/Bodeguero';
@@ -25,6 +24,8 @@ import Escaner from './pages/modulos/Escaner';
 import VerMermas from './pages/modulos/VerMermas';
 import GestionObras from './pages/modulos/GestionObras';
 import ModuloCompras from './pages/modulos/ModuloCompras';
+import GestionClientes from './pages/modulos/GestionClientes';
+import Autorizaciones from './pages/modulos/Autorizaciones';
 
 export default function App() {
   return (
@@ -58,6 +59,11 @@ export default function App() {
         <Route path="/ver-mermas" element={<VerMermas />} />
         <Route path="/gestion-obras" element={<GestionObras />} />
         <Route path="/modulo-compras" element={<ModuloCompras />} />
+        <Route path="/gestion-clientes" element={<GestionClientes />} />
+        <Route path="/autorizaciones" element={<Autorizaciones />} />
+
+        {/* Ruta comodín: redirige al Login si la URL no existe */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
