@@ -1,4 +1,4 @@
-"""Capa Vista (MVC): Endpoints REST de salud, obras e inventario."""
+"""Capa Vista (MVC): Endpoints REST de salud, obras, inventario, orquestación dual y sync offline."""
 
 import json
 from typing import Any
@@ -9,9 +9,12 @@ from django.views.decorators.csrf import csrf_exempt
 
 from controllers.rbac_xss_controller import require_rbac, sanitize_text_input
 from models.orden_obra_model import (
+    buscar_inventario_filtrado,
     crear_item_inventario,
     listar_inventario,
+    orquestar_movimiento_bodega,
     procesar_avance_obra,
+    sincronizar_lote_offline,
 )
 
 
@@ -144,3 +147,60 @@ def api_crear_inventario(request: Any) -> JsonResponse:
 
     creado = crear_item_inventario(sku, nombre, stock, ubicacion)
     return JsonResponse({"item": creado}, status=201)
+
+
+@require_rbac("inventario_bodega", "R")
+def api_buscar_inventario(request: Any) -> JsonResponse:
+    """GET /api/v1/inventario/search/?q=...&ubicacion=...&stock_critico=true"""
+    q = sanitize_text_input(str(request.GET.get("q", "")).strip())
+    ubicacion = sanitize_text_input(str(request.GET.get("ubicacion", "")).strip())
+    stock_critico = str(request.GET.get("stock_critico", "")).lower() == "true"
+
+    resultados = buscar_inventario_filtrado(q, ubicacion, stock_critico)
+    return JsonResponse({"resultados": resultados, "total": len(resultados)}, status=200)
+
+
+@csrf_exempt
+@require_rbac("inventario_bodega", "C")
+def api_orquestar_movimiento(request: Any) -> JsonResponse:
+    """POST /api/v1/movimientos/orquestar/ -> distribuye SQL (Kardex/IVA) y MongoDB (Telemetría)."""
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    sku = sanitize_text_input(str(data.get("sku", "")).strip())
+    tipo = sanitize_text_input(str(data.get("tipo", "")).strip()).upper()
+    telemetria = data.get("telemetria") or {"temperatura_c": 4.2, "origen": "API_REST"}
+    usuario = sanitize_text_input(str(data.get("usuario", "operador@fyag.cl")).strip())
+
+    try:
+        cantidad = int(data.get("cantidad", 0))
+        precio_neto = int(data.get("precio_neto", 0))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "cantidad y precio_neto deben ser enteros."}, status=400)
+
+    if not sku or tipo not in ("INGRESO", "EGRESO") or cantidad <= 0 or precio_neto < 0:
+        return JsonResponse({"error": "Parámetros de movimiento inválidos."}, status=400)
+
+    resultado = orquestar_movimiento_bodega(sku, tipo, cantidad, precio_neto, usuario, telemetria)
+    status_code = resultado.pop("status", 200)
+    return JsonResponse(resultado, status=status_code)
+
+
+@csrf_exempt
+@require_rbac("inventario_bodega", "C")
+def api_sincronizar_offline(request: Any) -> JsonResponse:
+    """POST /api/v1/sync/batch/ -> sincroniza caché local tras caída de red."""
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    operaciones = data.get("operaciones", [])
+    if not isinstance(operaciones, list):
+        return JsonResponse({"error": "El campo 'operaciones' debe ser una lista."}, status=400)
+
+    usuario = sanitize_text_input(str(data.get("usuario", "movil@fyag.cl")).strip())
+    resumen = sincronizar_lote_offline(operaciones, usuario)
+    return JsonResponse({"mensaje": "Sincronización batch completada.", "resumen": resumen}, status=207)
