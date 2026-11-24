@@ -76,8 +76,27 @@ export default function Cardex() {
     useEffect(() => {
         apiFetch('/cardex/')
             .then((data) => {
-                setMovimientos(data);
-                if (data.length > 0) setMovimientoSeleccionado(data[0]);
+                const lista = Array.isArray(data) ? data : (data.movimientos || []);
+                if (lista.length > 0) {
+                    const normalizados = lista.map((mov, idx) => ({
+                        id_cardex: mov.id_cardex ?? mov.id ?? idx + 1,
+                        fecha: mov.fecha ?? mov.created_at ?? 'Sin fecha',
+                        id_articulo: mov.id_articulo ?? mov.sku ?? '-',
+                        articulo_nombre: mov.articulo_nombre ?? mov.nombre ?? mov.sku ?? 'Artículo',
+                        id_usuario: mov.id_usuario ?? null,
+                        usuario_nombre: mov.usuario_nombre ?? mov.usuario ?? 'Usuario FYAG',
+                        tipo_movimiento: mov.tipo_movimiento ?? mov.tipo ?? 'Ingreso',
+                        referencia: mov.referencia ?? 'Registro sistema',
+                        cantidad: Number(mov.cantidad ?? 0),
+                        stock_resultante: Number(mov.stock_resultante ?? mov.stock ?? 0),
+                        costo_unitario: Number(mov.costo_unitario ?? mov.precio_neto ?? 0),
+                        observacion: mov.observacion ?? ''
+                    }));
+                    setMovimientos(normalizados);
+                    setMovimientoSeleccionado(normalizados[0]);
+                } else {
+                    setMovimientos([]);
+                }
             })
             .catch((err) => {
                 console.warn('No se pudo conectar con Django, usando datos de prueba:', err.message);
@@ -99,29 +118,36 @@ export default function Cardex() {
 
     // Estilos WCAG alto contraste por tipo de movimiento
     const obtenerEstiloTipo = (tipo) => {
-        const estilos = {
-            Ingreso: {
+        const tipoNormalizado = (tipo || '').toLowerCase();
+        if (tipoNormalizado.includes('ingreso')) {
+            return {
                 claseBadge: 'bg-success text-white',
                 colorBorde: '#198754',
                 icono: 'bi-arrow-down-circle-fill'
-            },
-            Salida: {
+            };
+        }
+        if (tipoNormalizado.includes('salida') || tipoNormalizado.includes('egreso')) {
+            return {
                 claseBadge: 'bg-danger text-white',
                 colorBorde: '#dc3545',
                 icono: 'bi-arrow-up-circle-fill'
-            },
-            Merma: {
+            };
+        }
+        if (tipoNormalizado.includes('merma')) {
+            return {
                 claseBadge: 'bg-danger text-white',
                 colorBorde: '#dc3545',
                 icono: 'bi-exclamation-octagon-fill'
-            },
-            Ajuste: {
+            };
+        }
+        if (tipoNormalizado.includes('ajuste')) {
+            return {
                 claseBadge: 'bg-warning text-dark',
                 colorBorde: '#d97706',
                 icono: 'bi-sliders'
-            }
-        };
-        return estilos[tipo] || {
+            };
+        }
+        return {
             claseBadge: 'bg-secondary text-white',
             colorBorde: '#6c757d',
             icono: 'bi-record-circle'
@@ -129,7 +155,9 @@ export default function Cardex() {
     };
 
     const movimientosFiltrados = movimientos.filter((mov) => {
-        const coincideTipo = filtroTipo === '' || mov.tipo_movimiento === filtroTipo;
+        const coincideTipo =
+            filtroTipo === '' ||
+            mov.tipo_movimiento.toLowerCase() === filtroTipo.toLowerCase();
         const termino = busqueda.toLowerCase();
         const coincideBusqueda =
             String(mov.id_cardex).includes(termino) ||

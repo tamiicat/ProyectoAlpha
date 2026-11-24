@@ -1,20 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function GestionUsuarios() {
     const navigate = useNavigate();
 
-    // Roles alineados a la tabla Rol (luego vendrán de Django: GET /roles)
     const rolesMock = [
-        { id_rol: 1, nombre: 'Administrador' },
-        { id_rol: 2, nombre: 'Bodeguero' },
-        { id_rol: 3, nombre: 'Técnico' },
-        { id_rol: 4, nombre: 'Finanzas' },
-        { id_rol: 5, nombre: 'Supervisor' }
+        { id_rol: 1, codigo: 'ADMIN_TI', nombre: 'Administrador' },
+        { id_rol: 2, codigo: 'BODEGUERO', nombre: 'Bodeguero' },
+        { id_rol: 3, codigo: 'TECNICO', nombre: 'Técnico' },
+        { id_rol: 4, codigo: 'FINANZAS', nombre: 'Finanzas' },
+        { id_rol: 5, codigo: 'SUPERVISOR_OBRAS', nombre: 'Supervisor' }
     ];
 
-    // Datos iniciales alineados a la tabla Usuario (luego vendrán de Django: GET /usuarios)
-    const [usuarios, setUsuarios] = useState([
+    const usuariosMock = [
         {
             id_usuario: 1,
             id_rol: 1,
@@ -48,11 +47,50 @@ export default function GestionUsuarios() {
             usuario: 'lrojas',
             activo: true
         }
-    ]);
+    ];
 
+    const [usuarios, setUsuarios] = useState(usuariosMock);
     const [busqueda, setBusqueda] = useState('');
     const [filtroRol, setFiltroRol] = useState('');
     const [usuarioEditando, setUsuarioEditando] = useState(null);
+
+    const mapearRolAId = (rolCrudo) => {
+        if (typeof rolCrudo === 'number') return rolCrudo;
+        const texto = String(rolCrudo || '').toUpperCase();
+        if (texto.includes('ADMIN')) return 1;
+        if (texto.includes('BODEG')) return 2;
+        if (texto.includes('TECNIC')) return 3;
+        if (texto.includes('FINANZ')) return 4;
+        if (texto.includes('SUPERVIS')) return 5;
+        return 1;
+    };
+
+    useEffect(() => {
+        apiFetch('/usuarios/')
+            .then((data) => {
+                const lista = Array.isArray(data) ? data : (data.usuarios || []);
+                if (lista.length > 0) {
+                    const normalizados = lista.map((u, idx) => {
+                        const correo = u.correo_electronico ?? u.email ?? 'sin-correo@fyag.cl';
+                        return {
+                            id_usuario: u.id_usuario ?? u.user_id ?? u.id ?? idx + 1,
+                            id_rol: u.id_rol ? Number(u.id_rol) : mapearRolAId(u.role ?? u.rol),
+                            nombres: u.nombres ?? u.nombre ?? correo.split('@')[0],
+                            apellidos: u.apellidos ?? '',
+                            rut: u.rut ?? 'Sin RUT',
+                            correo_electronico: correo,
+                            telefono: u.telefono ?? 'Sin teléfono',
+                            usuario: u.usuario ?? u.username ?? correo.split('@')[0],
+                            activo: u.activo !== undefined ? Boolean(u.activo) : true
+                        };
+                    });
+                    setUsuarios(normalizados);
+                }
+            })
+            .catch((err) => {
+                console.warn('No se pudo conectar con Django en Usuarios, usando datos locales:', err.message);
+            });
+    }, []);
 
     const obtenerNombreRol = (id_rol) => {
         const rol = rolesMock.find((r) => r.id_rol === Number(id_rol));
@@ -98,7 +136,6 @@ export default function GestionUsuarios() {
             activo: usuarioEditando.activo
         };
 
-        // PUT/PATCH /usuarios/:id en Django
         setUsuarios((prev) =>
             prev.map((u) => (u.id_usuario === payload.id_usuario ? payload : u))
         );
@@ -112,7 +149,6 @@ export default function GestionUsuarios() {
         );
         if (!confirmar) return;
 
-        // Borrado lógico (activo: false) listo para la API
         setUsuarios((prev) =>
             prev.map((u) =>
                 u.id_usuario === usr.id_usuario ? { ...u, activo: false } : u

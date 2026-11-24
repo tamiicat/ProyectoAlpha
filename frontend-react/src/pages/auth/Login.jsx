@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { apiFetch } from '../../services/api';
+import { authFetch } from '../../services/api';
 
 export default function Login() {
     const navigate = useNavigate();
 
-    // Usuarios de prueba alineados a Usuario + Rol (respaldo si Django no responde)
+    // Usuarios de prueba (respaldo si el microservicio Auth IAM no responde)
     const usuariosMock = [
-        { id_usuario: 1, usuario: 'admin', contrasena: '123', nombres: 'Pedro Benjamín', apellidos: 'Aedo Lagos', id_rol: 1, rol: 'Administrador', ruta: '/admin', activo: true },
-        { id_usuario: 2, usuario: 'bodeguero', contrasena: '123', nombres: 'Carlos', apellidos: 'Soto Muñoz', id_rol: 2, rol: 'Bodeguero', ruta: '/bodeguero', activo: true },
-        { id_usuario: 3, usuario: 'tecnico', contrasena: '123', nombres: 'Luis', apellidos: 'Rojas Vera', id_rol: 3, rol: 'Técnico', ruta: '/tecnico', activo: true },
-        { id_usuario: 4, usuario: 'finanzas', contrasena: '123', nombres: 'María', apellidos: 'Fuentes Díaz', id_rol: 4, rol: 'Finanzas', ruta: '/finanzas', activo: true },
-        { id_usuario: 5, usuario: 'supervisor', contrasena: '123', nombres: 'Andrea', apellidos: 'Morales Pino', id_rol: 5, rol: 'Supervisor de Obras', ruta: '/supervisor', activo: true }
+        { id_usuario: 1, usuario: 'admin', email: 'admin@fyag.cl', contrasena: '123', nombres: 'Pedro Benjamín', apellidos: 'Aedo Lagos', id_rol: 1, rol: 'Administrador', ruta: '/admin', activo: true },
+        { id_usuario: 2, usuario: 'bodeguero', email: 'bodeguero@fyag.cl', contrasena: '123', nombres: 'Carlos', apellidos: 'Soto Muñoz', id_rol: 2, rol: 'Bodeguero', ruta: '/bodeguero', activo: true },
+        { id_usuario: 3, usuario: 'tecnico', email: 'tecnico@fyag.cl', contrasena: '123', nombres: 'Luis', apellidos: 'Rojas Vera', id_rol: 3, rol: 'Técnico', ruta: '/tecnico', activo: true },
+        { id_usuario: 4, usuario: 'finanzas', email: 'finanzas@fyag.cl', contrasena: '123', nombres: 'María', apellidos: 'Fuentes Díaz', id_rol: 4, rol: 'Finanzas', ruta: '/finanzas', activo: true },
+        { id_usuario: 5, usuario: 'supervisor', email: 'supervisor@fyag.cl', contrasena: '123', nombres: 'Andrea', apellidos: 'Morales Pino', id_rol: 5, rol: 'Supervisor de Obras', ruta: '/supervisor', activo: true }
     ];
 
     const [formData, setFormData] = useState({
@@ -22,6 +22,33 @@ export default function Login() {
     const [mostrarContrasena, setMostrarContrasena] = useState(false);
     const [error, setError] = useState('');
     const [cargando, setCargando] = useState(false);
+
+    // Extrae el payload del JWT (user_id, role, etc.) sin librerías externas
+    const decodificarJWT = (token) => {
+        try {
+            const payloadBase64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(
+                atob(payloadBase64)
+                    .split('')
+                    .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                    .join('')
+            );
+            return JSON.parse(jsonPayload);
+        } catch {
+            return {};
+        }
+    };
+
+    const formatearNombreRol = (rol = '') => {
+        const mapa = {
+            ADMIN_TI: 'Administrador',
+            BODEGUERO: 'Bodeguero',
+            TECNICO: 'Técnico',
+            FINANZAS: 'Finanzas',
+            SUPERVISOR_OBRAS: 'Supervisor de Obras'
+        };
+        return mapa[rol.toUpperCase()] || rol || 'Administrador';
+    };
 
     const obtenerRutaPorRol = (rol = '') => {
         const normalizado = rol
@@ -62,7 +89,7 @@ export default function Login() {
 
         const usuarioLimpio = formData.usuario.trim();
         if (!usuarioLimpio || !formData.contrasena) {
-            setError('Debe ingresar su usuario y contraseña.');
+            setError('Debe ingresar su correo y contraseña.');
             return;
         }
 
@@ -70,28 +97,34 @@ export default function Login() {
         setError('');
 
         try {
-            // 1. Intenta autenticar con el backend real de Django
-            const data = await apiFetch('/login/', {
+            // 1. Autentica contra el microservicio Auth IAM (POST /auth/login)
+            const data = await authFetch('/auth/login', {
                 method: 'POST',
                 body: JSON.stringify({
-                    usuario: usuarioLimpio,
-                    password: formData.contrasena
+                    email: usuarioLimpio,
+                    password: formData.contrasena,
+                    device_id: 'web_fyag'
                 })
             });
 
+            const accessToken = data.access_token ?? data.token ?? data.access ?? null;
+            const payloadJWT = accessToken ? decodificarJWT(accessToken) : {};
+            const rolCrudo = data.role ?? data.rol ?? payloadJWT.role ?? payloadJWT.rol ?? 'ADMIN_TI';
+
             const sesionBackend = {
-                id_usuario: data.id_usuario ?? data.user?.id ?? null,
-                usuario: data.usuario ?? data.user?.username ?? usuarioLimpio,
-                nombres: data.nombres ?? data.user?.first_name ?? usuarioLimpio,
-                apellidos: data.apellidos ?? data.user?.last_name ?? '',
-                id_rol: data.id_rol ?? data.user?.id_rol ?? null,
-                rol: data.rol ?? data.user?.rol ?? 'Administrador',
-                token: data.token ?? data.access ?? null
+                id_usuario: data.user_id ?? payloadJWT.user_id ?? payloadJWT.sub ?? null,
+                usuario: usuarioLimpio,
+                nombres: data.nombres ?? usuarioLimpio.split('@')[0],
+                apellidos: data.apellidos ?? '',
+                rol_backend: rolCrudo,
+                rol: formatearNombreRol(rolCrudo),
+                token: accessToken,
+                refresh_token: data.refresh_token ?? null
             };
 
-            guardarSesionYEntrar(sesionBackend, obtenerRutaPorRol(sesionBackend.rol));
+            guardarSesionYEntrar(sesionBackend, obtenerRutaPorRol(rolCrudo));
         } catch (err) {
-            // 2. Si Django no responde (apagado o sin red), usa la simulación local
+            // 2. Si el microservicio Auth no responde (apagado o sin red), usa la simulación local
             const sinConexionBackend =
                 err instanceof TypeError ||
                 err.message.includes('Failed to fetch') ||
@@ -99,14 +132,17 @@ export default function Login() {
                 err.message.includes('404');
 
             if (sinConexionBackend) {
-                console.warn('Backend no disponible, validando con usuarios locales:', err.message);
+                console.warn('Auth IAM no disponible, validando con usuarios locales:', err.message);
 
                 const encontrado = usuariosMock.find(
-                    (u) => u.usuario.toLowerCase() === usuarioLimpio.toLowerCase() && u.contrasena === formData.contrasena
+                    (u) =>
+                        (u.usuario.toLowerCase() === usuarioLimpio.toLowerCase() ||
+                            u.email.toLowerCase() === usuarioLimpio.toLowerCase()) &&
+                        u.contrasena === formData.contrasena
                 );
 
                 if (!encontrado) {
-                    setError('Usuario o contraseña incorrectos. (Prueba con: admin, bodeguero, tecnico, finanzas o supervisor / clave: 123)');
+                    setError('Usuario o contraseña incorrectos. (Modo local: admin, bodeguero, tecnico, finanzas o supervisor / clave: 123)');
                     return;
                 }
 
@@ -126,8 +162,8 @@ export default function Login() {
 
                 guardarSesionYEntrar(sesion, encontrado.ruta);
             } else {
-                // Si Django sí respondió (ej. 401 Credenciales inválidas), muestra el error real
-                setError(err.message || 'Usuario o contraseña incorrectos.');
+                // Si Auth IAM respondió (ej. 401 Credenciales inválidas o Dispositivo revocado), muestra el error real
+                setError(err.message || 'Credenciales inválidas.');
             }
         } finally {
             setCargando(false);
@@ -168,7 +204,7 @@ export default function Login() {
 
                         <form onSubmit={handleSubmit}>
                             <div className="mb-4">
-                                <label className="form-label text-muted fw-semibold small">Usuario</label>
+                                <label className="form-label text-muted fw-semibold small">Correo o Usuario</label>
                                 <input
                                     type="text"
                                     name="usuario"
@@ -178,7 +214,7 @@ export default function Login() {
                                     value={formData.usuario}
                                     onChange={handleChange}
                                     className="form-control form-control-lg bg-light border-0"
-                                    placeholder="Ingrese su usuario"
+                                    placeholder="ej. finanzas@fyag.cl"
                                     style={{ fontSize: '0.95rem' }}
                                 />
                             </div>

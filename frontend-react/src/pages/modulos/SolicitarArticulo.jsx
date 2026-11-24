@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function SolicitarArticulo() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo (luego vendrán de la API de Django: GET /obras y GET /articulos)
     const obrasMock = [
         { id_obra: 201, nombre: 'Instalación Climatización Centro', estado: 'en proceso' },
         { id_obra: 202, nombre: 'Cámara de Maduración Agroindustrial', estado: 'pendiente' },
@@ -12,19 +12,55 @@ export default function SolicitarArticulo() {
     ];
 
     const articulosMock = [
-        { id_articulo: 500, nombre: 'Aire Acondicionado', codigo_de_barras: '12034298034821', stock_actual: 45, unidad_de_medida: 'Unidad' },
-        { id_articulo: 501, nombre: 'Válvula de Presión 3/4', codigo_de_barras: '7801234567890', stock_actual: 12, unidad_de_medida: 'Unidad' },
-        { id_articulo: 502, nombre: 'Cañería de Cobre 1/2', codigo_de_barras: '7809876543210', stock_actual: 120, unidad_de_medida: 'Metros' }
+        { id_articulo: 500, sku: '12034298034821', nombre: 'Aire Acondicionado', stock_actual: 45, unidad_de_medida: 'Unidad' },
+        { id_articulo: 501, sku: '7801234567890', nombre: 'Válvula de Presión 3/4', stock_actual: 12, unidad_de_medida: 'Unidad' },
+        { id_articulo: 502, sku: '7809876543210', nombre: 'Cañería de Cobre 1/2', stock_actual: 120, unidad_de_medida: 'Metros' }
     ];
 
-    // Estado de la cabecera (Solicitud_Articulo)
+    const [articulos, setArticulos] = useState(articulosMock);
+    const [solicitudesRecientes, setSolicitudesRecientes] = useState([]);
+    const [enviando, setEnviando] = useState(false);
+
+    // Estado de la cabecera
     const [idObra, setIdObra] = useState('');
     const [comentarios, setComentarios] = useState('');
 
-    // Estado para agregar ítems al detalle (Detalle_Solicitud)
+    // Estado para agregar ítems al detalle
     const [idArticuloActual, setIdArticuloActual] = useState('');
     const [cantidadActual, setCantidadActual] = useState('');
     const [detalles, setDetalles] = useState([]);
+
+    useEffect(() => {
+        // 1. Cargar artículos reales para obtener sus SKU
+        apiFetch('/inventario/items/')
+            .then((data) => {
+                const lista = Array.isArray(data) ? data : (data.items || []);
+                if (lista.length > 0) {
+                    setArticulos(
+                        lista.map((item, idx) => ({
+                            id_articulo: item.id_articulo ?? item.id ?? idx + 1,
+                            sku: item.sku ?? item.codigo_de_barras ?? `SKU-${idx + 1}`,
+                            nombre: item.nombre ?? 'Sin nombre',
+                            stock_actual: Number(item.stock_actual ?? item.stock ?? 0),
+                            unidad_de_medida: item.unidad_de_medida ?? 'Unidad'
+                        }))
+                    );
+                }
+            })
+            .catch((err) => {
+                console.warn('No se pudo cargar inventario en SolicitarArticulo, usando datos locales:', err.message);
+            });
+
+        // 2. Cargar solicitudes existentes (GET /api/v1/solicitudes/)
+        apiFetch('/solicitudes/')
+            .then((data) => {
+                const lista = Array.isArray(data) ? data : (data.solicitudes || []);
+                setSolicitudesRecientes(lista);
+            })
+            .catch((err) => {
+                console.warn('No se pudo cargar historial de solicitudes:', err.message);
+            });
+    }, []);
 
     const handleAgregarArticulo = () => {
         if (!idArticuloActual) {
@@ -38,12 +74,11 @@ export default function SolicitarArticulo() {
             return;
         }
 
-        const articuloEncontrado = articulosMock.find(
-            (art) => art.id_articulo === Number(idArticuloActual)
+        const articuloEncontrado = articulos.find(
+            (art) => String(art.id_articulo) === String(idArticuloActual)
         );
         if (!articuloEncontrado) return;
 
-        // Si el artículo ya está en la lista, sumamos la cantidad
         const existe = detalles.find((item) => item.id_articulo === articuloEncontrado.id_articulo);
         if (existe) {
             setDetalles((prev) =>
@@ -58,6 +93,7 @@ export default function SolicitarArticulo() {
                 ...prev,
                 {
                     id_articulo: articuloEncontrado.id_articulo,
+                    sku: articuloEncontrado.sku,
                     nombre: articuloEncontrado.nombre,
                     unidad_de_medida: articuloEncontrado.unidad_de_medida,
                     cantidad: cantNum
@@ -73,7 +109,7 @@ export default function SolicitarArticulo() {
         setDetalles((prev) => prev.filter((item) => item.id_articulo !== id_articulo));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (!idObra) {
@@ -86,24 +122,42 @@ export default function SolicitarArticulo() {
             return;
         }
 
-        // Payload listo para enviar a la API de Django
-        // (id_usuario y fecha los asigna el backend desde la sesión y la hora del servidor)
-        const payload = {
-            id_obra: Number(idObra),
-            comentarios: comentarios.trim(),
-            detalles: detalles.map((item) => ({
-                id_articulo: item.id_articulo,
-                cantidad: item.cantidad
-            }))
-        };
+        const obraSeleccionada = obrasMock.find((o) => String(o.id_obra) === String(idObra));
+        const textoObservacion = `Obra #OB-${idObra}${obraSeleccionada ? ` (${obraSeleccionada.nombre})` : ''}${comentarios.trim() ? ` - ${comentarios.trim()}` : ''}`;
 
-        console.log('Solicitud lista para enviar al backend:', payload);
-        alert('Solicitud enviada correctamente (simulación local).');
+        setEnviando(true);
+        try {
+            // Envía cada ítem al endpoint POST /api/v1/solicitudes/
+            const respuestas = [];
+            for (const item of detalles) {
+                const resp = await apiFetch('/solicitudes/', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        sku: item.sku,
+                        cantidad: item.cantidad,
+                        observacion: textoObservacion
+                    })
+                });
+                if (resp?.solicitud) respuestas.push(resp.solicitud);
+            }
 
-        // Limpiar formulario
-        setIdObra('');
-        setComentarios('');
-        setDetalles([]);
+            if (respuestas.length > 0) {
+                setSolicitudesRecientes((prev) => [...respuestas, ...prev]);
+            }
+
+            alert('Solicitud enviada correctamente al servidor.');
+            setIdObra('');
+            setComentarios('');
+            setDetalles([]);
+        } catch (err) {
+            console.warn('Error al enviar solicitud al backend, modo simulación local:', err.message);
+            alert('Solicitud registrada (simulación local: el backend no respondió).');
+            setIdObra('');
+            setComentarios('');
+            setDetalles([]);
+        } finally {
+            setEnviando(false);
+        }
     };
 
     return (
@@ -132,6 +186,7 @@ export default function SolicitarArticulo() {
                                 <label className="form-label fw-semibold text-muted small">Proyecto / Obra Destino</label>
                                 <select
                                     required
+                                    disabled={enviando}
                                     value={idObra}
                                     onChange={(e) => setIdObra(e.target.value)}
                                     className="form-select form-select-lg shadow-sm border-light bg-light text-muted"
@@ -146,7 +201,7 @@ export default function SolicitarArticulo() {
                             </div>
                         </div>
 
-                        {/* Sección para agregar múltiples artículos (Detalle_Solicitud) */}
+                        {/* Sección para agregar múltiples artículos */}
                         <div className="p-4 rounded-4 bg-light border mb-4">
                             <h6 className="fw-bold mb-3" style={{ color: '#2b3d52' }}>
                                 Artículos de la Solicitud
@@ -155,14 +210,15 @@ export default function SolicitarArticulo() {
                                 <div className="col-12 col-md-6">
                                     <label className="form-label fw-semibold text-muted small">Artículo Requerido</label>
                                     <select
+                                        disabled={enviando}
                                         value={idArticuloActual}
                                         onChange={(e) => setIdArticuloActual(e.target.value)}
                                         className="form-select form-select-lg shadow-sm border-0 bg-white text-muted"
                                     >
                                         <option value="">Seleccione un artículo...</option>
-                                        {articulosMock.map((art) => (
+                                        {articulos.map((art) => (
                                             <option key={art.id_articulo} value={art.id_articulo}>
-                                                {art.nombre} (Stock: {art.stock_actual} {art.unidad_de_medida})
+                                                {art.nombre} — SKU: {art.sku} (Stock: {art.stock_actual} {art.unidad_de_medida})
                                             </option>
                                         ))}
                                     </select>
@@ -172,6 +228,7 @@ export default function SolicitarArticulo() {
                                     <input
                                         type="number"
                                         min="1"
+                                        disabled={enviando}
                                         value={cantidadActual}
                                         onChange={(e) => setCantidadActual(e.target.value)}
                                         className="form-control form-control-lg shadow-sm border-0 bg-white"
@@ -181,6 +238,7 @@ export default function SolicitarArticulo() {
                                 <div className="col-12 col-md-3 d-grid">
                                     <button
                                         type="button"
+                                        disabled={enviando}
                                         onClick={handleAgregarArticulo}
                                         className="btn btn-lg btn-outline-primary fw-semibold shadow-sm bg-white"
                                     >
@@ -195,7 +253,7 @@ export default function SolicitarArticulo() {
                                     <table className="table table-hover align-middle mb-0">
                                         <thead style={{ backgroundColor: '#f4f6f8', color: '#2b3d52' }}>
                                             <tr>
-                                                <th className="py-2 px-3">ID Art.</th>
+                                                <th className="py-2 px-3">SKU</th>
                                                 <th className="py-2">Artículo</th>
                                                 <th className="py-2 text-center">Cantidad</th>
                                                 <th className="py-2 text-center">Quitar</th>
@@ -204,7 +262,7 @@ export default function SolicitarArticulo() {
                                         <tbody>
                                             {detalles.map((item) => (
                                                 <tr key={item.id_articulo}>
-                                                    <td className="px-3 text-muted fw-semibold">#{item.id_articulo}</td>
+                                                    <td className="px-3 text-muted fw-semibold">{item.sku}</td>
                                                     <td className="fw-semibold">{item.nombre}</td>
                                                     <td className="text-center fw-bold">
                                                         {item.cantidad} <span className="fw-normal text-muted small">{item.unidad_de_medida}</span>
@@ -212,6 +270,7 @@ export default function SolicitarArticulo() {
                                                     <td className="text-center">
                                                         <button
                                                             type="button"
+                                                            disabled={enviando}
                                                             onClick={() => handleQuitarArticulo(item.id_articulo)}
                                                             className="btn btn-sm btn-outline-danger"
                                                             title="Quitar artículo"
@@ -227,7 +286,7 @@ export default function SolicitarArticulo() {
                             )}
                         </div>
 
-                        {/* Comentarios (VARCHAR 500) */}
+                        {/* Comentarios */}
                         <div className="row g-4 mb-4">
                             <div className="col-12">
                                 <label className="form-label fw-semibold text-muted small">
@@ -235,6 +294,7 @@ export default function SolicitarArticulo() {
                                 </label>
                                 <textarea
                                     maxLength={500}
+                                    disabled={enviando}
                                     value={comentarios}
                                     onChange={(e) => setComentarios(e.target.value)}
                                     className="form-control shadow-sm border-light bg-light"
@@ -247,13 +307,51 @@ export default function SolicitarArticulo() {
                         <div className="d-flex justify-content-end mt-4">
                             <button
                                 type="submit"
+                                disabled={enviando}
                                 className="btn px-5 py-3 fw-bold text-white shadow-sm"
                                 style={{ backgroundColor: '#2b3d52', borderRadius: '12px' }}
                             >
-                                Enviar Solicitud
+                                {enviando ? 'Enviando...' : 'Enviar Solicitud'}
                             </button>
                         </div>
                     </form>
+
+                    {/* Historial rápido de solicitudes registradas en el backend */}
+                    {solicitudesRecientes.length > 0 && (
+                        <div className="mt-5 pt-4 border-top">
+                            <h6 className="fw-bold mb-3" style={{ color: '#2b3d52' }}>
+                                Solicitudes Recientes ({solicitudesRecientes.length})
+                            </h6>
+                            <div className="table-responsive rounded border shadow-sm">
+                                <table className="table table-sm table-hover align-middle mb-0">
+                                    <thead style={{ backgroundColor: '#f4f6f8', color: '#2b3d52' }}>
+                                        <tr>
+                                            <th className="py-2 px-3">ID</th>
+                                            <th className="py-2">SKU</th>
+                                            <th className="py-2 text-center">Cantidad</th>
+                                            <th className="py-2">Observación</th>
+                                            <th className="py-2 text-center">Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {solicitudesRecientes.map((sol, idx) => (
+                                            <tr key={sol.id ?? idx}>
+                                                <td className="px-3 text-muted small">#{sol.id ?? idx + 1}</td>
+                                                <td className="fw-semibold small">{sol.sku}</td>
+                                                <td className="text-center fw-bold">{sol.cantidad}</td>
+                                                <td className="small text-muted">{sol.observacion}</td>
+                                                <td className="text-center">
+                                                    <span className="badge bg-warning text-dark rounded-pill">
+                                                        {sol.estado ?? 'PENDIENTE'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

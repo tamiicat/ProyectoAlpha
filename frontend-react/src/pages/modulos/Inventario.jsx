@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function Inventario() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo (luego vendrán de la API de Django: GET /articulos)
+    // Datos de ejemplo (respaldo si Django no responde)
     const [articulos, setArticulos] = useState([
         {
             id_articulo: 500,
@@ -58,6 +59,32 @@ export default function Inventario() {
 
     // Estado para el modal de edición
     const [articuloEditando, setArticuloEditando] = useState(null);
+
+    useEffect(() => {
+        apiFetch('/inventario/items/')
+            .then((data) => {
+                const lista = Array.isArray(data) ? data : (data.items || []);
+                if (lista.length > 0) {
+                    const normalizados = lista.map((item, idx) => ({
+                        id_articulo: item.id_articulo ?? item.id ?? idx + 1,
+                        categoria_nombre: item.categoria_nombre ?? 'General',
+                        ubicacion_nombre: item.ubicacion_nombre ?? item.ubicacion ?? 'Bodega Central',
+                        codigo_de_barras: item.codigo_de_barras ?? item.sku ?? 'S/N',
+                        nombre: item.nombre ?? 'Sin nombre',
+                        stock_actual: Number(item.stock_actual ?? item.stock ?? 0),
+                        stock_critico: Number(item.stock_critico ?? 5),
+                        unidad_de_medida: item.unidad_de_medida ?? 'Unidad',
+                        precio: Number(item.precio ?? 0),
+                        estado: Number(item.stock_actual ?? item.stock ?? 0) > 0 ? 'en bodega' : 'sin stock',
+                        activo: true
+                    }));
+                    setArticulos(normalizados);
+                }
+            })
+            .catch((err) => {
+                console.warn('No se pudo conectar con Django en Inventario, usando datos locales:', err.message);
+            });
+    }, []);
 
     const formatearPrecio = (valor) => {
         return new Intl.NumberFormat('es-CL', {
