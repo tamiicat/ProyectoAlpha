@@ -26,6 +26,12 @@ RBAC_MATRIX: Dict[str, Dict[str, Set[str]]] = {
         "finanzas_costos": set(),
         "usuarios_roles": set(),
     },
+    "TECNICO": {
+        "inventario_bodega": {"R", "U"},
+        "obras_mantencion": {"R", "U"},
+        "finanzas_costos": set(),
+        "usuarios_roles": set(),
+    },
     "ADMIN_TI": {
         "finanzas_costos": {"C", "R", "U", "D"},
         "inventario_bodega": {"C", "R", "U", "D"},

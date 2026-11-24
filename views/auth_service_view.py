@@ -9,7 +9,31 @@ import jwt
 
 from models.seguridad_model import JWTManager, hash_password, verify_password
 
+ALLOWED_ORIGINS = {
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ALLOWED_ORIGINS",
+        "https://proyecto-alpha-fyag.vercel.app,http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+}
+
 DEMO_USERS: Dict[str, Dict[str, str]] = {
+    "admin@fyag.cl": {
+        "user_id": "usr_adm_01",
+        "role": "ADMIN_TI",
+        "password_hash": hash_password("AdminFyag2026#"),
+    },
+    "bodeguero@fyag.cl": {
+        "user_id": "usr_bod_01",
+        "role": "BODEGUERO",
+        "password_hash": hash_password("BodegaFyag2026#"),
+    },
+    "tecnico@fyag.cl": {
+        "user_id": "usr_tec_01",
+        "role": "TECNICO",
+        "password_hash": hash_password("TecnicoFyag2026#"),
+    },
     "finanzas@fyag.cl": {
         "user_id": "usr_fin_01",
         "role": "FINANZAS",
@@ -70,15 +94,32 @@ def build_handler(jwt_manager: JWTManager, store: MemoryStore):
     class AuthMicroserviceHandler(BaseHTTPRequestHandler):
         """Manejador REST del microservicio de autenticación."""
 
+        def _set_cors_headers(self) -> None:
+            origin = self.headers.get("Origin", "")
+            if origin in ALLOWED_ORIGINS:
+                self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+            self.send_header(
+                "Access-Control-Allow-Headers", "Content-Type, Authorization"
+            )
+            self.send_header("Vary", "Origin")
+
         def _send_json(
             self, status_code: int, payload: Dict[str, Any]
         ) -> None:
             body = json.dumps(payload).encode("utf-8")
             self.send_response(status_code)
+            self._set_cors_headers()
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def do_OPTIONS(self) -> None:
+            self.send_response(204)
+            self._set_cors_headers()
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
         def do_GET(self) -> None:
             if self.path == "/health":
