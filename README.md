@@ -1,48 +1,45 @@
-# Proyecto Alpha (FYAG) - Estructura MVC
+# ProyectoAlpha
 
-Proyecto organizado en capas `models/`, `views/` y `controllers/`, con punto de entrada `main.py`, configuración en `config/`, carpetas `static/` y `templates/`, y suite de pruebas en `tests/`.
+Sistema de Gestión Logística FYAG (Proyecto Alpha).
 
-## Estructura
+## Frontend (`frontend-react`)
+Desarrollado con React, Vite, React Router DOM y Bootstrap.
 
-```text
-ProyectoAlpha-MVC/
-├── main.py
-├── manage.py
-├── requirements.txt
-├── Dockerfile
-├── .env.example
-├── .gitignore
-├── verificar_evidencias.py
-├── models/
-│   ├── __init__.py
-│   ├── orden_obra_model.py
-│   └── seguridad_model.py
-├── views/
-│   ├── __init__.py
-│   ├── api_views.py
-│   └── auth_service_view.py
-├── controllers/
-│   ├── __init__.py
-│   ├── rbac_xss_controller.py
-│   ├── middleware_controller.py
-│   └── urls_controller.py
-├── config/
-│   ├── __init__.py
-│   ├── settings.py
-│   ├── wsgi.py
-│   └── asgi.py
-├── static/
-├── templates/
-└── tests/
-    ├── __init__.py
-    ├── test_microservice.py
-    └── test_security.py
+### Requisitos
+* Node.js (v18 o superior)
+* npm
+
+### Variables de entorno
+Crea un archivo `.env` dentro de la carpeta `frontend-react` con las siguientes variables (solicitar las URLs reales al equipo):
+```env
+VITE_API_URL=URL_DEL_BACKEND
+VITE_AUTH_URL=URL_DEL_SERVICIO_AUTH
 ```
 
-## Ejecución rápida
-
+### Ejecución
 ```bash
-python main.py check
-python verificar_evidencias.py
-pytest
+cd frontend-react
+npm install
+npm run dev
 ```
+
+* Abre en el navegador `http://localhost:5173`.
+
+## Backend y Credenciales
+
+Desarrollado en Python 3.13 con Django (arquitectura MVC), persistencia SQLite/PostgreSQL y soporte NoSQL (MongoDB) para telemetría.
+
+### Requisitos
+* Python 3.12 o superior
+* Entorno virtual (`venv`)
+
+### Variables de entorno
+Copia el archivo `.env.example` a `.env` en la raíz del proyecto y completa las credenciales necesarias (por ejemplo `MONGO_URI` si usas MongoDB externo; si se deja vacío, utiliza respaldo local en memoria).
+
+### Instalación, Base de Datos y Ejecución
+```bash
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver
