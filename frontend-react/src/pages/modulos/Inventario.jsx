@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../services/api';
 
@@ -57,6 +57,12 @@ export default function Inventario() {
         }
     ]);
 
+    // Estados de búsqueda y filtros
+    const [busqueda, setBusqueda] = useState('');
+    const [filtroCategoria, setFiltroCategoria] = useState('todas');
+    const [filtroUbicacion, setFiltroUbicacion] = useState('todas');
+    const [filtroEstado, setFiltroEstado] = useState('todos'); // todos | optimo | bajo | critico
+
     // Estado para el modal de edición
     const [articuloEditando, setArticuloEditando] = useState(null);
 
@@ -92,6 +98,13 @@ export default function Inventario() {
             currency: 'CLP',
             maximumFractionDigits: 0
         }).format(valor);
+    };
+
+    // Clasificación del estado de stock para filtros y semáforo
+    const obtenerTipoEstado = (stockActual, stockCritico) => {
+        if (stockActual === 0 || stockActual <= stockCritico) return 'critico';
+        if (stockActual <= Math.ceil(stockCritico * 1.5)) return 'bajo';
+        return 'optimo';
     };
 
     // Indicador semafórico de stock (WCAG alto contraste)
@@ -130,6 +143,63 @@ export default function Inventario() {
             claseTexto: 'text-success',
             icono: 'bi-check-circle-fill'
         };
+    };
+
+    // Opciones dinámicas para los selectores
+    const categoriasUnicas = useMemo(() => {
+        return [...new Set(articulos.map((a) => a.categoria_nombre).filter(Boolean))].sort();
+    }, [articulos]);
+
+    const ubicacionesUnicas = useMemo(() => {
+        return [...new Set(articulos.map((a) => a.ubicacion_nombre).filter(Boolean))].sort();
+    }, [articulos]);
+
+    // Conteo por estado para mostrar en los botones del semáforo
+    const conteoEstados = useMemo(() => {
+        return articulos.reduce(
+            (acc, art) => {
+                const tipo = obtenerTipoEstado(art.stock_actual, art.stock_critico);
+                acc[tipo] += 1;
+                return acc;
+            },
+            { optimo: 0, bajo: 0, critico: 0 }
+        );
+    }, [articulos]);
+
+    // Lista filtrada en tiempo real
+    const articulosFiltrados = useMemo(() => {
+        const texto = busqueda.trim().toLowerCase();
+        return articulos.filter((art) => {
+            const coincideTexto =
+                !texto ||
+                art.nombre.toLowerCase().includes(texto) ||
+                String(art.codigo_de_barras).toLowerCase().includes(texto) ||
+                String(art.id_articulo).includes(texto);
+
+            const coincideCategoria =
+                filtroCategoria === 'todas' || art.categoria_nombre === filtroCategoria;
+
+            const coincideUbicacion =
+                filtroUbicacion === 'todas' || art.ubicacion_nombre === filtroUbicacion;
+
+            const tipoEstado = obtenerTipoEstado(art.stock_actual, art.stock_critico);
+            const coincideEstado = filtroEstado === 'todos' || tipoEstado === filtroEstado;
+
+            return coincideTexto && coincideCategoria && coincideUbicacion && coincideEstado;
+        });
+    }, [articulos, busqueda, filtroCategoria, filtroUbicacion, filtroEstado]);
+
+    const hayFiltrosActivos =
+        busqueda.trim() !== '' ||
+        filtroCategoria !== 'todas' ||
+        filtroUbicacion !== 'todas' ||
+        filtroEstado !== 'todos';
+
+    const limpiarFiltros = () => {
+        setBusqueda('');
+        setFiltroCategoria('todas');
+        setFiltroUbicacion('todas');
+        setFiltroEstado('todos');
     };
 
     const handleAbrirEditar = (articulo) => {
@@ -190,7 +260,7 @@ export default function Inventario() {
                         <img src="/img/logo-fyag.png" alt="Logo FYAG" style={{ height: '60px', objectFit: 'contain' }} />
                         <div className="ms-3 ms-md-4">
                             <h3 className="mb-0 fw-semibold">Inventario Registrado</h3>
-                            <span className="small opacity-75">Registro de artículos y control de stock crítico</span>
+                            <span className="small opacity-75">Registro general de artículos y control de stock crítico</span>
                         </div>
                     </div>
                     <div className="w-100 w-md-auto text-center">
@@ -206,16 +276,134 @@ export default function Inventario() {
                 </div>
 
                 <div className="bg-white p-3 p-md-5 border-top-0">
-                    {/* Leyenda semafórica */}
-                    <div className="d-flex flex-wrap gap-2 mb-4 small">
-                        <span className="badge bg-success px-3 py-2 rounded-pill">
-                            <i className="bi bi-check-circle-fill me-1"></i> Óptimo
-                        </span>
-                        <span className="badge bg-warning text-dark px-3 py-2 rounded-pill">
-                            <i className="bi bi-exclamation-circle-fill me-1"></i> Stock Bajo (Preventivo)
-                        </span>
-                        <span className="badge bg-danger px-3 py-2 rounded-pill">
-                            <i className="bi bi-exclamation-triangle-fill me-1"></i> Crítico / Sin Stock
+                    {/* Barra de búsqueda y filtros */}
+                    <div className="row g-3 mb-3 align-items-end">
+                        <div className="col-12 col-md-5">
+                            <label className="form-label small fw-semibold text-muted mb-1">
+                                Buscar artículo
+                            </label>
+                            <div className="input-group">
+                                <span className="input-group-text bg-light border-end-0">
+                                    <i className="bi bi-search text-muted"></i>
+                                </span>
+                                <input
+                                    type="text"
+                                    className="form-control bg-light border-start-0"
+                                    placeholder="Nombre, código de barras o ID..."
+                                    value={busqueda}
+                                    onChange={(e) => setBusqueda(e.target.value)}
+                                    style={{ minHeight: '44px' }}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="col-12 col-sm-6 col-md-3">
+                            <label className="form-label small fw-semibold text-muted mb-1">
+                                Categoría
+                            </label>
+                            <select
+                                className="form-select bg-light"
+                                value={filtroCategoria}
+                                onChange={(e) => setFiltroCategoria(e.target.value)}
+                                style={{ minHeight: '44px' }}
+                            >
+                                <option value="todas">Todas las categorías</option>
+                                {categoriasUnicas.map((cat) => (
+                                    <option key={cat} value={cat}>
+                                        {cat}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="col-12 col-sm-6 col-md-3">
+                            <label className="form-label small fw-semibold text-muted mb-1">
+                                Ubicación
+                            </label>
+                            <select
+                                className="form-select bg-light"
+                                value={filtroUbicacion}
+                                onChange={(e) => setFiltroUbicacion(e.target.value)}
+                                style={{ minHeight: '44px' }}
+                            >
+                                <option value="todas">Todas las ubicaciones</option>
+                                {ubicacionesUnicas.map((ub) => (
+                                    <option key={ub} value={ub}>
+                                        {ub}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="col-12 col-md-1 d-grid">
+                            <button
+                                type="button"
+                                className="btn btn-outline-secondary"
+                                onClick={limpiarFiltros}
+                                disabled={!hayFiltrosActivos}
+                                title="Limpiar filtros"
+                                style={{ minHeight: '44px' }}
+                            >
+                                <i className="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Filtros rápidos por Semáforo + contador de resultados */}
+                    <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+                        <div className="d-flex flex-wrap gap-2 small">
+                            <button
+                                type="button"
+                                onClick={() => setFiltroEstado('todos')}
+                                className={`btn btn-sm rounded-pill px-3 fw-semibold ${
+                                    filtroEstado === 'todos'
+                                        ? 'btn-dark'
+                                        : 'btn-outline-secondary'
+                                }`}
+                            >
+                                Todos ({articulos.length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFiltroEstado('optimo')}
+                                className={`btn btn-sm rounded-pill px-3 fw-semibold ${
+                                    filtroEstado === 'optimo'
+                                        ? 'btn-success'
+                                        : 'btn-outline-success'
+                                }`}
+                            >
+                                <i className="bi bi-check-circle-fill me-1"></i>
+                                Óptimo ({conteoEstados.optimo})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFiltroEstado('bajo')}
+                                className={`btn btn-sm rounded-pill px-3 fw-semibold ${
+                                    filtroEstado === 'bajo'
+                                        ? 'btn-warning text-dark'
+                                        : 'btn-outline-warning text-dark'
+                                }`}
+                            >
+                                <i className="bi bi-exclamation-circle-fill me-1"></i>
+                                Stock Bajo ({conteoEstados.bajo})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFiltroEstado('critico')}
+                                className={`btn btn-sm rounded-pill px-3 fw-semibold ${
+                                    filtroEstado === 'critico'
+                                        ? 'btn-danger'
+                                        : 'btn-outline-danger'
+                                }`}
+                            >
+                                <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                                Crítico / Sin Stock ({conteoEstados.critico})
+                            </button>
+                        </div>
+
+                        <span className="small text-muted">
+                            Mostrando <strong>{articulosFiltrados.length}</strong> de{' '}
+                            <strong>{articulos.length}</strong> artículos
                         </span>
                     </div>
 
@@ -237,14 +425,16 @@ export default function Inventario() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {articulos.length === 0 ? (
+                                {articulosFiltrados.length === 0 ? (
                                     <tr>
                                         <td colSpan="10" className="text-center py-4 text-muted">
-                                            No hay artículos registrados en el inventario.
+                                            {hayFiltrosActivos
+                                                ? 'No se encontraron artículos con los filtros seleccionados.'
+                                                : 'No hay artículos registrados en el inventario.'}
                                         </td>
                                     </tr>
                                 ) : (
-                                    articulos.map((art) => {
+                                    articulosFiltrados.map((art) => {
                                         const semaforo = obtenerSemaforoStock(art.stock_actual, art.stock_critico);
                                         return (
                                             <tr key={art.id_articulo}>
@@ -296,13 +486,15 @@ export default function Inventario() {
 
                     {/* VISTA MÓVIL: Tarjetas (Cards) legibles con semáforo y botones >= 48px */}
                     <div className="d-block d-md-none">
-                        {articulos.length === 0 ? (
+                        {articulosFiltrados.length === 0 ? (
                             <div className="text-center py-4 text-muted border rounded-4 bg-light">
-                                No hay artículos registrados en el inventario.
+                                {hayFiltrosActivos
+                                    ? 'No se encontraron artículos con los filtros seleccionados.'
+                                    : 'No hay artículos registrados en el inventario.'}
                             </div>
                         ) : (
                             <div className="d-flex flex-column gap-3">
-                                {articulos.map((art) => {
+                                {articulosFiltrados.map((art) => {
                                     const semaforo = obtenerSemaforoStock(art.stock_actual, art.stock_critico);
                                     return (
                                         <div

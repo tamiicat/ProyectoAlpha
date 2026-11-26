@@ -2,11 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import Login from './pages/auth/Login';
-import Admin from './pages/paneles/Admin';
-import Bodeguero from './pages/paneles/Bodeguero';
-import Tecnico from './pages/paneles/Tecnico';
-import Finanzas from './pages/paneles/Finanzas';
-import Supervisor from './pages/paneles/Supervisor';
+import Dashboard from './pages/modulos/Dashboard';
 import GestionUsuarios from './pages/modulos/GestionUsuarios';
 import Inventario from './pages/modulos/Inventario';
 import Cardex from './pages/modulos/Cardex';
@@ -34,12 +30,13 @@ export default function App() {
         {/* Ruta principal: Login */}
         <Route path="/" element={<Login />} />
 
-        {/* Paneles por rol */}
-        <Route path="/admin" element={<Admin />} />
-        <Route path="/bodeguero" element={<Bodeguero />} />
-        <Route path="/tecnico" element={<Tecnico />} />
-        <Route path="/finanzas" element={<Finanzas />} />
-        <Route path="/supervisor" element={<Supervisor />} />
+        {/* Paneles por rol (integrados en Dashboard) */}
+        <Route path="/admin" element={<Dashboard rol="admin" />} />
+        <Route path="/bodeguero" element={<Dashboard rol="bodeguero" />} />
+        <Route path="/tecnico" element={<Dashboard rol="tecnico" />} />
+        <Route path="/finanzas" element={<Dashboard rol="finanzas" />} />
+        <Route path="/supervisor" element={<Dashboard rol="supervisor" />} />
+        <Route path="/dashboard" element={<Dashboard rol="admin" />} />
 
         {/* Módulos del sistema */}
         <Route path="/gestion-usuarios" element={<GestionUsuarios />} />
