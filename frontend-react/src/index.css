@@ -1,0 +1,270 @@
+/* Eliminamos márgenes por defecto del navegador */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --fyag-navy: #1b2e42;
+  --fyag-navy-hover: #243c56;
+  --fyag-accent: #0ea5e9;
+  --fyag-bg: #f4f7fa;
+}
+
+body {
+  background-color: var(--fyag-bg);
+}
+
+/* =========================================================
+   SISTEMA GLOBAL DE BOTONES (Estilo Dashboard FYAG)
+   ========================================================= */
+
+.btn {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1.5px);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Botones principales del menú antiguo */
+.btn-menu {
+  background-color: var(--fyag-navy) !important;
+  color: #ffffff !important;
+  border-radius: 12px !important;
+  border: none !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 10px rgba(27, 46, 66, 0.16);
+}
+
+.btn-menu:hover {
+  background-color: var(--fyag-navy-hover) !important;
+  box-shadow: 0 6px 16px rgba(27, 46, 66, 0.24);
+}
+
+/* Botones primarios oscuros dentro de los módulos (Guardar, Registrar, Confirmar) */
+.fyag-main-content .btn.text-white {
+  background-color: var(--fyag-navy) !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 4px 12px rgba(27, 46, 66, 0.18) !important;
+}
+
+.fyag-main-content .btn.text-white:hover:not(:disabled) {
+  background-color: var(--fyag-navy-hover) !important;
+  filter: brightness(1.15);
+  box-shadow: 0 6px 16px rgba(27, 46, 66, 0.28) !important;
+}
+
+/* Botón claro en headers de módulos ("+ Nuevo Proveedor", "Imprimir", etc.) */
+.fyag-main-content .btn-light {
+  background-color: #ffffff !important;
+  color: var(--fyag-navy) !important;
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+}
+
+.fyag-main-content .btn-light:hover:not(:disabled) {
+  background-color: #f0f9ff !important;
+  color: #0369a1 !important;
+  box-shadow: 0 5px 14px rgba(14, 165, 233, 0.25);
+}
+
+/* Botón "Volver al menú" y outline sobre fondos oscuros */
+.btn-outline-light {
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #ffffff !important;
+}
+
+.btn-outline-light:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  border-color: rgba(255, 255, 255, 0.7) !important;
+  color: #ffffff !important;
+}
+
+/* Botones de acción en tablas (Ver, Editar, Eliminar) con estilo pastel moderno */
+.fyag-main-content .table .btn-sm {
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  font-weight: 600;
+}
+
+.fyag-main-content .btn-outline-primary {
+  color: #0284c7;
+  border-color: rgba(14, 165, 233, 0.35);
+  background-color: rgba(14, 165, 233, 0.06);
+}
+
+.fyag-main-content .btn-outline-primary:hover:not(:disabled) {
+  background-color: #0ea5e9;
+  border-color: #0ea5e9;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(14, 165, 233, 0.28);
+}
+
+.fyag-main-content .btn-outline-danger {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.3);
+  background-color: rgba(220, 38, 38, 0.05);
+}
+
+.fyag-main-content .btn-outline-danger:hover:not(:disabled) {
+  background-color: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(220, 38, 38, 0.25);
+}
+
+.fyag-main-content .btn-outline-secondary {
+  color: #475569;
+  border-color: #cbd5e1;
+  background-color: #ffffff;
+}
+
+.fyag-main-content .btn-outline-secondary:hover:not(:disabled) {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #1e293b;
+}
+
+/* Focus limpio en inputs y selects para acompañar el estilo del Dashboard */
+.fyag-main-content .form-control:focus,
+.fyag-main-content .form-select:focus {
+  border-color: var(--fyag-accent) !important;
+  box-shadow: 0 0 0 0.2rem rgba(14, 165, 233, 0.16) !important;
+}
+
+/* =========================================================
+   TARJETAS Y LAYOUT EXISTENTE
+   ========================================================= */
+
+.panel-card {
+  border-radius: 15px !important;
+  border: none !important;
+}
+
+/* Animación del módulo Escáner */
+@keyframes scan {
+  0% { top: 0; }
+  50% { top: 100%; }
+  100% { top: 0; }
+}
+
+.scan-line {
+  animation: scan 2s infinite linear;
+}
+
+/* Adapta los módulos existentes dentro del DashboardLayout */
+.fyag-main-content > .container,
+.fyag-main-content > .container-xl,
+.fyag-main-content > .container-fluid {
+  max-width: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.fyag-main-content .shadow-lg {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06) !important;
+  border-radius: 16px !important;
+}
+
+/* Sincroniza los headers de los módulos con el color del rol activo */
+.fyag-main-content .shadow-lg > div:first-child {
+  background-color: var(--fyag-navy) !important;
+}
+
+/* =========================================================
+   ADAPTACIÓN MÓVIL (Pantallas bajo 768px)
+   ========================================================= */
+
+@media (max-width: 767.98px) {
+  .fyag-main-content .shadow-lg > div:first-child {
+    padding: 1.25rem !important;
+    gap: 0.9rem;
+    align-items: flex-start !important;
+  }
+
+  .fyag-main-content .shadow-lg > div:first-child img {
+    height: 44px !important;
+  }
+
+  .fyag-main-content .shadow-lg > div:first-child .ms-4 {
+    margin-left: 0.75rem !important;
+  }
+
+  .fyag-main-content .shadow-lg > div:first-child h3 {
+    font-size: 1.25rem;
+  }
+
+  .fyag-main-content .shadow-lg > div:first-child > div:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .fyag-main-content .shadow-lg > div:nth-child(2) {
+    padding: 1.15rem !important;
+  }
+
+  .fyag-main-content .btn {
+    padding: 0.5rem 0.9rem !important;
+    font-size: 0.85rem;
+  }
+
+  .fyag-main-content .table th,
+  .fyag-main-content .table td {
+    padding: 0.6rem 0.65rem !important;
+    font-size: 0.82rem;
+  }
+
+  .fyag-main-content .table-responsive {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .fyag-main-content .table td[colspan] {
+    text-align: left !important;
+    white-space: normal;
+  }
+}
+
+/* Sidebar flotante en móvil para que no aplaste el contenido */
+@media (max-width: 991.98px) {
+  .fyag-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1050;
+    height: 100vh;
+  }
+
+  .fyag-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(15, 23, 42, 0.55);
+    z-index: 1040;
+  }
+}
