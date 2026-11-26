@@ -7,7 +7,11 @@ from django.db import connection
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from controllers.rbac_xss_controller import require_rbac, sanitize_text_input
+from controllers.rbac_xss_controller import (
+    RBAC_MATRIX,
+    require_rbac,
+    sanitize_text_input,
+)
 from models.orden_obra_model import (
     buscar_inventario_filtrado,
     crear_item_inventario,
@@ -89,19 +93,38 @@ def registrar_avance_obra(request: Any) -> JsonResponse:
         )
 
     obra = procesar_avance_obra(codigo_obra, porcentaje, observacion)
-    codigo_resp = obra.codigo if isinstance(obra.codigo, str) else codigo_obra
-    porcentaje_resp = (
-        obra.porcentaje_avance
-        if isinstance(obra.porcentaje_avance, int)
-        and not isinstance(obra.porcentaje_avance, bool)
-        else porcentaje
-    )
-    observacion_resp = (
-        obra.observacion if isinstance(obra.observacion, str) else observacion
-    )
-    estado_resp = (
-        obra.estado if isinstance(obra.estado, str) else "EN_EJECUCION"
-    )
+    if isinstance(obra, dict):
+        codigo_resp = (
+            obra.get("codigo") if isinstance(obra.get("codigo"), str) else codigo_obra
+        )
+        porcentaje_resp = (
+            obra.get("porcentaje_avance")
+            if isinstance(obra.get("porcentaje_avance"), int)
+            and not isinstance(obra.get("porcentaje_avance"), bool)
+            else porcentaje
+        )
+        observacion_resp = (
+            obra.get("observacion")
+            if isinstance(obra.get("observacion"), str)
+            else observacion
+        )
+        estado_resp = (
+            obra.get("estado") if isinstance(obra.get("estado"), str) else "EN_EJECUCION"
+        )
+    else:
+        codigo_resp = obra.codigo if isinstance(obra.codigo, str) else codigo_obra
+        porcentaje_resp = (
+            obra.porcentaje_avance
+            if isinstance(obra.porcentaje_avance, int)
+            and not isinstance(obra.porcentaje_avance, bool)
+            else porcentaje
+        )
+        observacion_resp = (
+            obra.observacion if isinstance(obra.observacion, str) else observacion
+        )
+        estado_resp = (
+            obra.estado if isinstance(obra.estado, str) else "EN_EJECUCION"
+        )
 
     return JsonResponse(
         {
@@ -206,45 +229,89 @@ def api_sincronizar_offline(request: Any) -> JsonResponse:
     return JsonResponse({"mensaje": "Sincronización batch completada.", "resumen": resumen}, status=207)
 
 
-@require_rbac("usuarios_roles", "R")
+@csrf_exempt
 def api_usuarios(request: Any) -> JsonResponse:
-    """GET /api/v1/usuarios/ -> lista usuarios de prueba y roles del sistema."""
-    if request.method != "GET":
-        return JsonResponse({"error": "Método no permitido."}, status=405)
+    """GET/POST /api/v1/usuarios/ -> lista o registra usuarios y roles del sistema."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
 
-    usuarios = [
-        {
-            "id": "usr_adm_01",
-            "email": "admin@fyag.cl",
-            "rol": "ADMIN_TI",
+    if request.method == "GET":
+        if "R" not in RBAC_MATRIX.get(role, {}).get("usuarios_roles", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'usuarios_roles' (R)."},
+                status=403,
+            )
+        usuarios = [
+            {
+                "id": "usr_adm_01",
+                "email": "admin@fyag.cl",
+                "rol": "ADMIN_TI",
+                "activo": True,
+            },
+            {
+                "id": "usr_bod_01",
+                "email": "bodeguero@fyag.cl",
+                "rol": "BODEGUERO",
+                "activo": True,
+            },
+            {
+                "id": "usr_tec_01",
+                "email": "tecnico@fyag.cl",
+                "rol": "TECNICO",
+                "activo": True,
+            },
+            {
+                "id": "usr_fin_01",
+                "email": "finanzas@fyag.cl",
+                "rol": "FINANZAS",
+                "activo": True,
+            },
+            {
+                "id": "usr_sup_02",
+                "email": "supervisor@fyag.cl",
+                "rol": "SUPERVISOR_OBRAS",
+                "activo": True,
+            },
+        ]
+        return JsonResponse({"usuarios": usuarios, "total": len(usuarios)}, status=200)
+
+    if request.method == "POST":
+        if "C" not in RBAC_MATRIX.get(role, {}).get("usuarios_roles", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'usuarios_roles' (C)."},
+                status=403,
+            )
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        nombres = sanitize_text_input(str(data.get("nombres", data.get("nombre", ""))).strip())
+        apellidos = sanitize_text_input(str(data.get("apellidos", "")).strip())
+        rut = sanitize_text_input(str(data.get("rut", "")).strip())
+        telefono = sanitize_text_input(str(data.get("telefono", "")).strip())
+        email = sanitize_text_input(str(data.get("email", data.get("correo", ""))).strip())
+        username = sanitize_text_input(str(data.get("username", data.get("usuario", ""))).strip())
+        rol_asignado = sanitize_text_input(str(data.get("rol", data.get("role", "TECNICO"))).strip()).upper()
+
+        if not email or not nombres:
+            return JsonResponse({"error": "Nombres y correo electrónico son obligatorios."}, status=400)
+
+        nuevo_usuario = {
+            "id": f"usr_{username or 'nuevo'}",
+            "nombres": nombres,
+            "apellidos": apellidos,
+            "rut": rut,
+            "telefono": telefono,
+            "email": email,
+            "username": username,
+            "rol": rol_asignado,
             "activo": True,
-        },
-        {
-            "id": "usr_bod_01",
-            "email": "bodeguero@fyag.cl",
-            "rol": "BODEGUERO",
-            "activo": True,
-        },
-        {
-            "id": "usr_tec_01",
-            "email": "tecnico@fyag.cl",
-            "rol": "TECNICO",
-            "activo": True,
-        },
-        {
-            "id": "usr_fin_01",
-            "email": "finanzas@fyag.cl",
-            "rol": "FINANZAS",
-            "activo": True,
-        },
-        {
-            "id": "usr_sup_02",
-            "email": "supervisor@fyag.cl",
-            "rol": "SUPERVISOR_OBRAS",
-            "activo": True,
-        },
-    ]
-    return JsonResponse({"usuarios": usuarios, "total": len(usuarios)}, status=200)
+        }
+        return JsonResponse({"usuario": nuevo_usuario, "mensaje": "Usuario registrado correctamente."}, status=201)
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
 @require_rbac("inventario_bodega", "R")
