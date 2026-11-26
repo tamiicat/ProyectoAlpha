@@ -2,54 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../services/api';
 
+const ROLES_CATALOGO = [
+    { id_rol: 1, codigo: 'ADMIN_TI', nombre: 'Administrador' },
+    { id_rol: 2, codigo: 'BODEGUERO', nombre: 'Bodeguero' },
+    { id_rol: 3, codigo: 'TECNICO', nombre: 'Técnico' },
+    { id_rol: 4, codigo: 'FINANZAS', nombre: 'Finanzas' },
+    { id_rol: 5, codigo: 'SUPERVISOR_OBRAS', nombre: 'Supervisor' }
+];
+
 export default function GestionUsuarios() {
     const navigate = useNavigate();
 
-    const rolesMock = [
-        { id_rol: 1, codigo: 'ADMIN_TI', nombre: 'Administrador' },
-        { id_rol: 2, codigo: 'BODEGUERO', nombre: 'Bodeguero' },
-        { id_rol: 3, codigo: 'TECNICO', nombre: 'Técnico' },
-        { id_rol: 4, codigo: 'FINANZAS', nombre: 'Finanzas' },
-        { id_rol: 5, codigo: 'SUPERVISOR_OBRAS', nombre: 'Supervisor' }
-    ];
-
-    const usuariosMock = [
-        {
-            id_usuario: 1,
-            id_rol: 1,
-            nombres: 'Pedro Benjamín',
-            apellidos: 'Aedo Lagos',
-            rut: '18.902.213-1',
-            correo_electronico: 'p.aedolagos@gmail.com',
-            telefono: '912345678',
-            usuario: 'paedo',
-            activo: true
-        },
-        {
-            id_usuario: 2,
-            id_rol: 2,
-            nombres: 'Carlos',
-            apellidos: 'Soto Muñoz',
-            rut: '19.456.123-4',
-            correo_electronico: 'csoto@fyag.cl',
-            telefono: '987654321',
-            usuario: 'csoto',
-            activo: true
-        },
-        {
-            id_usuario: 3,
-            id_rol: 3,
-            nombres: 'Luis',
-            apellidos: 'Rojas Vera',
-            rut: '17.321.654-K',
-            correo_electronico: 'lrojas@fyag.cl',
-            telefono: '945612378',
-            usuario: 'lrojas',
-            activo: true
-        }
-    ];
-
-    const [usuarios, setUsuarios] = useState(usuariosMock);
+    const [usuarios, setUsuarios] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
     const [busqueda, setBusqueda] = useState('');
     const [filtroRol, setFiltroRol] = useState('');
     const [usuarioEditando, setUsuarioEditando] = useState(null);
@@ -65,35 +31,41 @@ export default function GestionUsuarios() {
         return 1;
     };
 
-    useEffect(() => {
-        apiFetch('/usuarios/')
-            .then((data) => {
-                const lista = Array.isArray(data) ? data : (data.usuarios || []);
-                if (lista.length > 0) {
-                    const normalizados = lista.map((u, idx) => {
-                        const correo = u.correo_electronico ?? u.email ?? 'sin-correo@fyag.cl';
-                        return {
-                            id_usuario: u.id_usuario ?? u.user_id ?? u.id ?? idx + 1,
-                            id_rol: u.id_rol ? Number(u.id_rol) : mapearRolAId(u.role ?? u.rol),
-                            nombres: u.nombres ?? u.nombre ?? correo.split('@')[0],
-                            apellidos: u.apellidos ?? '',
-                            rut: u.rut ?? 'Sin RUT',
-                            correo_electronico: correo,
-                            telefono: u.telefono ?? 'Sin teléfono',
-                            usuario: u.usuario ?? u.username ?? correo.split('@')[0],
-                            activo: u.activo !== undefined ? Boolean(u.activo) : true
-                        };
-                    });
-                    setUsuarios(normalizados);
-                }
-            })
-            .catch((err) => {
-                console.warn('No se pudo conectar con Django en Usuarios, usando datos locales:', err.message);
+    const cargarUsuarios = async () => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const data = await apiFetch('/usuarios/');
+            const lista = Array.isArray(data) ? data : (data.usuarios || []);
+            const normalizados = lista.map((u, idx) => {
+                const correo = u.correo_electronico ?? u.email ?? 'sin-correo@fyag.cl';
+                return {
+                    id_usuario: u.id_usuario ?? u.user_id ?? u.id ?? idx + 1,
+                    id_rol: u.id_rol ? Number(u.id_rol) : mapearRolAId(u.role ?? u.rol),
+                    nombres: u.nombres ?? u.nombre ?? correo.split('@')[0],
+                    apellidos: u.apellidos ?? '',
+                    rut: u.rut ?? 'Sin RUT',
+                    correo_electronico: correo,
+                    telefono: u.telefono ?? 'Sin teléfono',
+                    usuario: u.usuario ?? u.username ?? correo.split('@')[0],
+                    activo: u.activo !== undefined ? Boolean(u.activo) : true
+                };
             });
+            setUsuarios(normalizados);
+        } catch (err) {
+            setUsuarios([]);
+            setErrorCarga(err?.message || 'No se pudieron cargar los usuarios desde el servidor.');
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    useEffect(() => {
+        cargarUsuarios();
     }, []);
 
     const obtenerNombreRol = (id_rol) => {
-        const rol = rolesMock.find((r) => r.id_rol === Number(id_rol));
+        const rol = ROLES_CATALOGO.find((r) => r.id_rol === Number(id_rol));
         return rol ? rol.nombre : 'Sin rol';
     };
 
@@ -121,7 +93,7 @@ export default function GestionUsuarios() {
         }));
     };
 
-    const handleGuardarEdicion = (e) => {
+    const handleGuardarEdicion = async (e) => {
         e.preventDefault();
 
         const payload = {
@@ -136,28 +108,33 @@ export default function GestionUsuarios() {
             activo: usuarioEditando.activo
         };
 
-        setUsuarios((prev) =>
-            prev.map((u) => (u.id_usuario === payload.id_usuario ? payload : u))
-        );
-        console.log('Usuario actualizado (simulación local):', payload);
-        setUsuarioEditando(null);
+        try {
+            await apiFetch(`/usuarios/${payload.id_usuario}/`, {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
+            await cargarUsuarios();
+            setUsuarioEditando(null);
+        } catch (err) {
+            alert(`No se pudo actualizar el usuario: ${err?.message || 'Error en el servidor'}`);
+        }
     };
 
-    const handleDesactivar = (usr) => {
+    const handleDesactivar = async (usr) => {
         const confirmar = window.confirm(
             `¿Seguro que deseas desactivar al usuario "${usr.nombres} ${usr.apellidos}" (@${usr.usuario})?`
         );
         if (!confirmar) return;
 
-        setUsuarios((prev) =>
-            prev.map((u) =>
-                u.id_usuario === usr.id_usuario ? { ...u, activo: false } : u
-            )
-        );
-        console.log('Usuario desactivado (simulación local):', {
-            id_usuario: usr.id_usuario,
-            activo: false
-        });
+        try {
+            await apiFetch(`/usuarios/${usr.id_usuario}/`, {
+                method: 'PATCH',
+                body: JSON.stringify({ activo: false })
+            });
+            await cargarUsuarios();
+        } catch (err) {
+            alert(`No se pudo desactivar el usuario: ${err?.message || 'Error en el servidor'}`);
+        }
     };
 
     return (
@@ -179,6 +156,15 @@ export default function GestionUsuarios() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={cargarUsuarios} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     {/* Filtros */}
                     <div className="row g-3 mb-4">
                         <div className="col-12 col-md-8">
@@ -197,7 +183,7 @@ export default function GestionUsuarios() {
                                 className="form-select bg-light border-light shadow-sm text-muted"
                             >
                                 <option value="">Todos los roles</option>
-                                {rolesMock.map((rol) => (
+                                {ROLES_CATALOGO.map((rol) => (
                                     <option key={rol.id_rol} value={rol.id_rol}>
                                         {rol.nombre}
                                     </option>
@@ -221,10 +207,18 @@ export default function GestionUsuarios() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {usuariosFiltrados.length === 0 ? (
+                                {cargando ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
-                                            No se encontraron usuarios con los filtros aplicados.
+                                            Cargando usuarios desde el servidor...
+                                        </td>
+                                    </tr>
+                                ) : usuariosFiltrados.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" className="text-center py-4 text-muted">
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No se encontraron usuarios registrados.'}
                                         </td>
                                     </tr>
                                 ) : (
@@ -385,7 +379,7 @@ export default function GestionUsuarios() {
                                                 onChange={handleChangeEdicion}
                                                 className="form-select bg-light text-muted"
                                             >
-                                                {rolesMock.map((rol) => (
+                                                {ROLES_CATALOGO.map((rol) => (
                                                     <option key={rol.id_rol} value={rol.id_rol}>
                                                         {rol.nombre}
                                                     </option>

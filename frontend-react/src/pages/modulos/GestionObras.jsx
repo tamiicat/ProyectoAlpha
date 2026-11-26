@@ -1,57 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function GestionObras() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo (luego vendrán de la API de Django: GET /clientes y GET /usuarios)
-    const clientesMock = [
-        { id_cliente: 1, nombre: 'Agroindustrial Ñuble Ltda.' },
-        { id_cliente: 2, nombre: 'Frigorífico San Carlos S.A.' },
-        { id_cliente: 3, nombre: 'Comercial Chillán Centro' }
-    ];
-
-    const usuariosMock = [
-        { id_usuario: 3, nombre: 'Carlos Méndez (Técnico)' },
-        { id_usuario: 4, nombre: 'Luis Rojas (Técnico)' },
-        { id_usuario: 5, nombre: 'Andrea Morales (Supervisor)' }
-    ];
-
-    // Datos de ejemplo alineados a Obra y Detalle_Obra (GET /obras)
-    const [obras, setObras] = useState([
-        {
-            id_obra: 201,
-            id_usuario: 3,
-            usuario_nombre: 'Carlos Méndez (Técnico)',
-            id_cliente: 3,
-            cliente_nombre: 'Comercial Chillán Centro',
-            nombre: 'Instalación Climatización Centro',
-            tipo: 'instalación',
-            estado: 'en proceso',
-            fecha_inicio: '2026-11-10',
-            fecha_termino: '2026-11-25',
-            activo: true,
-            detalles: [
-                { id_detalle: 1, observaciones: 'Se completó el montaje de ductos en el primer piso.' }
-            ]
-        },
-        {
-            id_obra: 202,
-            id_usuario: 4,
-            usuario_nombre: 'Luis Rojas (Técnico)',
-            id_cliente: 2,
-            cliente_nombre: 'Frigorífico San Carlos S.A.',
-            nombre: 'Cámara de Maduración Agroindustrial',
-            tipo: 'reparación',
-            estado: 'finalizada',
-            fecha_inicio: '2026-10-05',
-            fecha_termino: '2026-10-20',
-            activo: true,
-            detalles: [
-                { id_detalle: 2, observaciones: 'Cambio de compresor y prueba de hermeticidad aprobada.' }
-            ]
-        }
-    ]);
+    const [clientes, setClientes] = useState([]);
+    const [usuarios, setUsuarios] = useState([]);
+    const [obras, setObras] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
+    const [guardandoObra, setGuardandoObra] = useState(false);
+    const [guardandoObs, setGuardandoObs] = useState(false);
 
     // Estados para modales
     const [mostrarModalObra, setMostrarModalObra] = useState(false);
@@ -74,6 +34,91 @@ export default function GestionObras() {
 
     const [formData, setFormData] = useState(estadoInicialFormulario);
 
+    const normalizarObra = (o, idx) => ({
+        id_obra: o.id_obra ?? o.id ?? idx + 1,
+        id_usuario: o.id_usuario ?? o.usuario_id ?? '',
+        usuario_nombre: o.usuario_nombre ?? o.usuario ?? 'Sin asignar',
+        id_cliente: o.id_cliente ?? o.cliente_id ?? '',
+        cliente_nombre: o.cliente_nombre ?? o.cliente ?? 'Sin cliente',
+        nombre: o.nombre ?? `Obra #${o.id_obra ?? o.id ?? idx + 1}`,
+        tipo: o.tipo ?? 'instalación',
+        estado: (o.estado || 'pendiente').toLowerCase(),
+        fecha_inicio: o.fecha_inicio ?? '',
+        fecha_termino: o.fecha_termino ?? null,
+        activo: o.activo !== undefined ? Boolean(o.activo) : true,
+        detalles: Array.isArray(o.detalles)
+            ? o.detalles.map((det, dIdx) => ({
+                  id_detalle: det.id_detalle ?? det.id ?? dIdx + 1,
+                  id_obra: det.id_obra ?? o.id_obra ?? o.id ?? idx + 1,
+                  observaciones: det.observaciones ?? det.observacion ?? ''
+              }))
+            : []
+    });
+
+    const cargarObrasYCatalogos = async (idObraDetallesAbierta = null) => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const [resObras, resClientes, resUsuarios] = await Promise.allSettled([
+                apiFetch('/obras/'),
+                apiFetch('/clientes/'),
+                apiFetch('/usuarios/')
+            ]);
+
+            if (resObras.status === 'fulfilled') {
+                const rawObras = resObras.value;
+                const listaObras = Array.isArray(rawObras) ? rawObras : (rawObras.obras || rawObras.results || []);
+                const normalizadas = listaObras.map(normalizarObra);
+                setObras(normalizadas);
+
+                if (idObraDetallesAbierta !== null) {
+                    const actualizada = normalizadas.find((item) => Number(item.id_obra) === Number(idObraDetallesAbierta));
+                    setObraDetalles(actualizada || null);
+                }
+            } else {
+                setObras([]);
+                setErrorCarga(resObras.reason?.message || 'No se pudieron cargar las obras desde el servidor.');
+            }
+
+            if (resClientes.status === 'fulfilled') {
+                const rawCli = resClientes.value;
+                const listaCli = Array.isArray(rawCli) ? rawCli : (rawCli.clientes || rawCli.results || []);
+                setClientes(
+                    listaCli.map((c, idx) => ({
+                        id_cliente: c.id_cliente ?? c.id ?? idx + 1,
+                        nombre: c.nombre ?? c.razon_social ?? 'Cliente'
+                    }))
+                );
+            }
+
+            if (resUsuarios.status === 'fulfilled') {
+                const rawUsr = resUsuarios.value;
+                const listaUsr = Array.isArray(rawUsr) ? rawUsr : (rawUsr.usuarios || rawUsr.results || []);
+                setUsuarios(
+                    listaUsr.map((u, idx) => {
+                        const nombreCompleto = `${u.nombres ?? u.nombre ?? ''} ${u.apellidos ?? ''}`.trim();
+                        const rolTexto = u.rol ?? u.role ?? '';
+                        return {
+                            id_usuario: u.id_usuario ?? u.id ?? idx + 1,
+                            nombre: nombreCompleto
+                                ? `${nombreCompleto}${rolTexto ? ` (${rolTexto})` : ''}`
+                                : (u.usuario ?? u.username ?? `Usuario #${u.id_usuario ?? u.id ?? idx + 1}`)
+                        };
+                    })
+                );
+            }
+        } catch (err) {
+            setObras([]);
+            setErrorCarga(err?.message || 'Error al comunicarse con el servidor.');
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    useEffect(() => {
+        cargarObrasYCatalogos();
+    }, []);
+
     const obtenerBadgeEstado = (estado) => {
         const estilos = {
             pendiente: { clase: 'bg-warning bg-opacity-10 text-warning border-warning', texto: 'Pendiente' },
@@ -85,7 +130,7 @@ export default function GestionObras() {
     };
 
     const formatearTipo = (tipo) => {
-        return tipo.charAt(0).toUpperCase() + tipo.slice(1);
+        return tipo ? tipo.charAt(0).toUpperCase() + tipo.slice(1) : 'General';
     };
 
     const handleAbrirNuevaObra = () => {
@@ -119,114 +164,90 @@ export default function GestionObras() {
         }));
     };
 
-    const handleGuardarObra = (e) => {
+    const handleGuardarObra = async (e) => {
         e.preventDefault();
 
-        const clienteSel = clientesMock.find((c) => c.id_cliente === Number(formData.id_cliente));
-        const usuarioSel = usuariosMock.find((u) => u.id_usuario === Number(formData.id_usuario));
+        setGuardandoObra(true);
+        try {
+            if (modoEdicion) {
+                const payloadEditar = {
+                    id_usuario: Number(formData.id_usuario),
+                    id_cliente: Number(formData.id_cliente),
+                    nombre: formData.nombre.trim(),
+                    tipo: formData.tipo,
+                    estado: formData.estado,
+                    fecha_inicio: formData.fecha_inicio,
+                    fecha_termino: formData.fecha_termino || null,
+                    activo: formData.activo
+                };
 
-        if (modoEdicion) {
-            const payloadEditar = {
-                id_obra: formData.id_obra,
-                id_usuario: Number(formData.id_usuario),
-                id_cliente: Number(formData.id_cliente),
-                nombre: formData.nombre.trim(),
-                tipo: formData.tipo,
-                estado: formData.estado,
-                fecha_inicio: formData.fecha_inicio,
-                fecha_termino: formData.fecha_termino || null,
-                activo: formData.activo
-            };
+                await apiFetch(`/obras/${formData.id_obra}/`, {
+                    method: 'PUT',
+                    body: JSON.stringify(payloadEditar)
+                });
+            } else {
+                const payloadCrear = {
+                    id_usuario: Number(formData.id_usuario),
+                    id_cliente: Number(formData.id_cliente),
+                    nombre: formData.nombre.trim(),
+                    tipo: formData.tipo,
+                    estado: formData.estado,
+                    fecha_inicio: formData.fecha_inicio,
+                    fecha_termino: formData.fecha_termino || null,
+                    activo: true,
+                    observaciones_inicial: formData.observacion_inicial.trim() || null
+                };
 
-            setObras((prev) =>
-                prev.map((obra) =>
-                    obra.id_obra === formData.id_obra
-                        ? {
-                              ...obra,
-                              ...payloadEditar,
-                              cliente_nombre: clienteSel ? clienteSel.nombre : obra.cliente_nombre,
-                              usuario_nombre: usuarioSel ? usuarioSel.nombre : obra.usuario_nombre
-                          }
-                        : obra
-                )
-            );
-            console.log('Obra actualizada (simulación local):', payloadEditar);
-        } else {
-            const nuevoId = obras.length > 0 ? Math.max(...obras.map((o) => o.id_obra)) + 1 : 201;
-            const detallesIniciales = formData.observacion_inicial.trim()
-                ? [{ id_detalle: Date.now(), observaciones: formData.observacion_inicial.trim() }]
-                : [];
+                await apiFetch('/obras/', {
+                    method: 'POST',
+                    body: JSON.stringify(payloadCrear)
+                });
+            }
 
-            const nuevaObra = {
-                id_obra: nuevoId,
-                id_usuario: Number(formData.id_usuario),
-                usuario_nombre: usuarioSel ? usuarioSel.nombre : 'Sin asignar',
-                id_cliente: Number(formData.id_cliente),
-                cliente_nombre: clienteSel ? clienteSel.nombre : 'Sin cliente',
-                nombre: formData.nombre.trim(),
-                tipo: formData.tipo,
-                estado: formData.estado,
-                fecha_inicio: formData.fecha_inicio,
-                fecha_termino: formData.fecha_termino || null,
-                activo: true,
-                detalles: detallesIniciales
-            };
-
-            setObras((prev) => [nuevaObra, ...prev]);
-            console.log('Nueva obra lista para enviar al backend:', {
-                id_usuario: nuevaObra.id_usuario,
-                id_cliente: nuevaObra.id_cliente,
-                nombre: nuevaObra.nombre,
-                tipo: nuevaObra.tipo,
-                estado: nuevaObra.estado,
-                fecha_inicio: nuevaObra.fecha_inicio,
-                fecha_termino: nuevaObra.fecha_termino,
-                activo: true,
-                observaciones_inicial: formData.observacion_inicial.trim() || null
-            });
+            await cargarObrasYCatalogos();
+            setMostrarModalObra(false);
+        } catch (err) {
+            alert(`No se pudo guardar la obra: ${err?.message || 'Error en el servidor.'}`);
+        } finally {
+            setGuardandoObra(false);
         }
-
-        setMostrarModalObra(false);
     };
 
-    const handleEliminarObra = (obra) => {
+    const handleEliminarObra = async (obra) => {
         const confirmar = window.confirm(`¿Seguro que deseas desactivar/eliminar la obra "${obra.nombre}" (#OB-${obra.id_obra})?`);
         if (!confirmar) return;
 
-        // Borrado lógico (activo: false) listo para la API
-        setObras((prev) => prev.filter((item) => item.id_obra !== obra.id_obra));
-        console.log('Obra desactivada (simulación local):', { id_obra: obra.id_obra, activo: false });
+        try {
+            await apiFetch(`/obras/${obra.id_obra}/`, {
+                method: 'PATCH',
+                body: JSON.stringify({ activo: false })
+            });
+            await cargarObrasYCatalogos();
+        } catch (err) {
+            alert(`No se pudo desactivar la obra: ${err?.message || 'Error en el servidor.'}`);
+        }
     };
 
-    const handleAgregarObservacion = (e) => {
+    const handleAgregarObservacion = async (e) => {
         e.preventDefault();
         if (!nuevaObservacion.trim() || !obraDetalles) return;
 
-        const nuevoDetalle = {
-            id_detalle: Date.now(),
-            id_obra: obraDetalles.id_obra,
-            observaciones: nuevaObservacion.trim()
-        };
-
-        setObras((prev) =>
-            prev.map((obra) =>
-                obra.id_obra === obraDetalles.id_obra
-                    ? { ...obra, detalles: [...obra.detalles, nuevoDetalle] }
-                    : obra
-            )
-        );
-
-        setObraDetalles((prev) => ({
-            ...prev,
-            detalles: [...prev.detalles, nuevoDetalle]
-        }));
-
-        console.log('Detalle_Obra listo para enviar al backend:', {
-            id_obra: obraDetalles.id_obra,
-            observaciones: nuevoDetalle.observaciones
-        });
-
-        setNuevaObservacion('');
+        setGuardandoObs(true);
+        try {
+            await apiFetch(`/obras/${obraDetalles.id_obra}/observaciones/`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id_obra: obraDetalles.id_obra,
+                    observaciones: nuevaObservacion.trim()
+                })
+            });
+            setNuevaObservacion('');
+            await cargarObrasYCatalogos(obraDetalles.id_obra);
+        } catch (err) {
+            alert(`No se pudo agregar la observación: ${err?.message || 'Error en el servidor.'}`);
+        } finally {
+            setGuardandoObs(false);
+        }
     };
 
     return (
@@ -260,6 +281,15 @@ export default function GestionObras() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={() => cargarObrasYCatalogos()} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     <div className="table-responsive shadow-sm rounded border">
                         <table className="table table-hover align-middle mb-0">
                             <thead style={{ backgroundColor: '#f4f6f8', color: '#2b3d52' }}>
@@ -275,10 +305,18 @@ export default function GestionObras() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {obras.length === 0 ? (
+                                {cargando ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
-                                            No hay obras registradas.
+                                            Cargando obras desde el servidor...
+                                        </td>
+                                    </tr>
+                                ) : obras.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" className="text-center py-4 text-muted">
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No hay obras registradas en el servidor.'}
                                         </td>
                                     </tr>
                                 ) : (
@@ -376,7 +414,7 @@ export default function GestionObras() {
                                                 className="form-select bg-light text-muted"
                                             >
                                                 <option value="">Seleccione un cliente...</option>
-                                                {clientesMock.map((cli) => (
+                                                {clientes.map((cli) => (
                                                     <option key={cli.id_cliente} value={cli.id_cliente}>
                                                         {cli.nombre}
                                                     </option>
@@ -393,7 +431,7 @@ export default function GestionObras() {
                                                 className="form-select bg-light text-muted"
                                             >
                                                 <option value="">Seleccione un encargado...</option>
-                                                {usuariosMock.map((usr) => (
+                                                {usuarios.map((usr) => (
                                                     <option key={usr.id_usuario} value={usr.id_usuario}>
                                                         {usr.nombre}
                                                     </option>
@@ -470,6 +508,7 @@ export default function GestionObras() {
                                 <div className="modal-footer px-4 py-3 bg-light">
                                     <button
                                         type="button"
+                                        disabled={guardandoObra}
                                         className="btn btn-outline-secondary rounded-pill px-4"
                                         onClick={() => setMostrarModalObra(false)}
                                     >
@@ -477,10 +516,11 @@ export default function GestionObras() {
                                     </button>
                                     <button
                                         type="submit"
+                                        disabled={guardandoObra}
                                         className="btn text-white rounded-pill px-4 fw-semibold"
                                         style={{ backgroundColor: '#2b3d52' }}
                                     >
-                                        {modoEdicion ? 'Guardar Cambios' : 'Crear Obra'}
+                                        {guardandoObra ? 'Guardando...' : (modoEdicion ? 'Guardar Cambios' : 'Crear Obra')}
                                     </button>
                                 </div>
                             </form>
@@ -528,6 +568,7 @@ export default function GestionObras() {
                                     <textarea
                                         maxLength={500}
                                         required
+                                        disabled={guardandoObs}
                                         rows="3"
                                         value={nuevaObservacion}
                                         onChange={(e) => setNuevaObservacion(e.target.value)}
@@ -537,6 +578,7 @@ export default function GestionObras() {
                                     <div className="d-flex justify-content-end gap-2">
                                         <button
                                             type="button"
+                                            disabled={guardandoObs}
                                             className="btn btn-outline-secondary rounded-pill px-4"
                                             onClick={() => setObraDetalles(null)}
                                         >
@@ -544,10 +586,11 @@ export default function GestionObras() {
                                         </button>
                                         <button
                                             type="submit"
+                                            disabled={guardandoObs}
                                             className="btn text-white rounded-pill px-4 fw-semibold"
                                             style={{ backgroundColor: '#2b3d52' }}
                                         >
-                                            Agregar Observación
+                                            {guardandoObs ? 'Guardando...' : 'Agregar Observación'}
                                         </button>
                                     </div>
                                 </form>

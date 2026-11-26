@@ -1,50 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function VerMermas() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo alineados a la tabla Merma (luego vendrán de Django: GET /mermas)
-    const mermasMock = [
-        {
-            id_merma: 101,
-            id_articulo: 500,
-            articulo_nombre: 'Aire Acondicionado',
-            id_usuario: 2,
-            usuario_nombre: 'Carlos Soto (Bodeguero)',
-            fecha: '2026-11-10 10:15',
-            motivo: 'Daño por transporte',
-            cantidad: 2,
-            justificacion: 'Carcasa abollada al descargar en bodega.'
-        },
-        {
-            id_merma: 102,
-            id_articulo: 501,
-            articulo_nombre: 'Filtro de Compresor Industrial',
-            id_usuario: 3,
-            usuario_nombre: 'Luis Rojas (Técnico)',
-            fecha: '2026-11-14 16:40',
-            motivo: 'Defecto de fábrica',
-            cantidad: 1,
-            justificacion: 'Sello defectuoso detectado en revisión técnica.'
-        },
-        {
-            id_merma: 103,
-            id_articulo: 502,
-            articulo_nombre: 'Válvula de Presión 3/4',
-            id_usuario: 2,
-            usuario_nombre: 'Carlos Soto (Bodeguero)',
-            fecha: '2026-11-18 09:20',
-            motivo: 'Rotura en manipulación',
-            cantidad: 3,
-            justificacion: 'Caída de caja durante reordenamiento en pasillo B.'
-        }
-    ];
-
+    const [mermas, setMermas] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
     const [busqueda, setBusqueda] = useState('');
     const [filtroMotivo, setFiltroMotivo] = useState('');
 
-    const motivosUnicos = [...new Set(mermasMock.map((m) => m.motivo))];
+    const cargarMermas = async () => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const data = await apiFetch('/mermas/');
+            const lista = Array.isArray(data) ? data : (data.mermas || data.results || []);
+            const normalizadas = lista.map((m, idx) => ({
+                id_merma: m.id_merma ?? m.id ?? idx + 1,
+                id_articulo: m.id_articulo ?? m.articulo_id ?? m.sku ?? '-',
+                articulo_nombre: m.articulo_nombre ?? m.articulo ?? m.nombre ?? 'Artículo',
+                id_usuario: m.id_usuario ?? m.usuario_id ?? null,
+                usuario_nombre: m.usuario_nombre ?? m.usuario ?? 'Usuario FYAG',
+                fecha: m.fecha ?? m.created_at ?? '',
+                motivo: m.motivo ?? 'Sin motivo',
+                cantidad: Number(m.cantidad ?? 0),
+                justificacion: m.justificacion ?? m.observacion ?? ''
+            }));
+            setMermas(normalizadas);
+        } catch (err) {
+            setMermas([]);
+            setErrorCarga(err?.message || 'No se pudieron cargar las mermas desde el servidor.');
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    useEffect(() => {
+        cargarMermas();
+    }, []);
+
+    const motivosUnicos = [...new Set(mermas.map((m) => m.motivo).filter(Boolean))];
 
     const obtenerBadgeMotivo = (motivo) => {
         if (motivo === 'Daño por transporte' || motivo === 'Rotura en manipulación') {
@@ -56,7 +53,7 @@ export default function VerMermas() {
         return 'bg-secondary bg-opacity-10 text-secondary border-secondary';
     };
 
-    const mermasFiltradas = mermasMock.filter((merma) => {
+    const mermasFiltradas = mermas.filter((merma) => {
         const coincideMotivo = filtroMotivo === '' || merma.motivo === filtroMotivo;
         const termino = busqueda.toLowerCase();
         const coincideBusqueda =
@@ -87,6 +84,15 @@ export default function VerMermas() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={cargarMermas} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     {/* Filtros */}
                     <div className="row g-3 mb-4">
                         <div className="col-12 col-md-8">
@@ -128,10 +134,18 @@ export default function VerMermas() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {mermasFiltradas.length === 0 ? (
+                                {cargando ? (
                                     <tr>
                                         <td colSpan="7" className="text-center py-4 text-muted">
-                                            No se encontraron registros de mermas con los filtros aplicados.
+                                            Cargando historial de mermas desde el servidor...
+                                        </td>
+                                    </tr>
+                                ) : mermasFiltradas.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="7" className="text-center py-4 text-muted">
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No se encontraron registros de mermas con los filtros aplicados.'}
                                         </td>
                                     </tr>
                                 ) : (

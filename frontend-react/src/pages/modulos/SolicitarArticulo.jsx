@@ -5,20 +5,10 @@ import { apiFetch } from '../../services/api';
 export default function SolicitarArticulo() {
     const navigate = useNavigate();
 
-    const obrasMock = [
-        { id_obra: 201, nombre: 'Instalación Climatización Centro', estado: 'en proceso' },
-        { id_obra: 202, nombre: 'Cámara de Maduración Agroindustrial', estado: 'pendiente' },
-        { id_obra: 203, nombre: 'Mantención Frigorífico Chillán Viejo', estado: 'en proceso' }
-    ];
-
-    const articulosMock = [
-        { id_articulo: 500, sku: '12034298034821', nombre: 'Aire Acondicionado', stock_actual: 45, unidad_de_medida: 'Unidad' },
-        { id_articulo: 501, sku: '7801234567890', nombre: 'Válvula de Presión 3/4', stock_actual: 12, unidad_de_medida: 'Unidad' },
-        { id_articulo: 502, sku: '7809876543210', nombre: 'Cañería de Cobre 1/2', stock_actual: 120, unidad_de_medida: 'Metros' }
-    ];
-
-    const [articulos, setArticulos] = useState(articulosMock);
+    const [obras, setObras] = useState([]);
+    const [articulos, setArticulos] = useState([]);
     const [solicitudesRecientes, setSolicitudesRecientes] = useState([]);
+    const [errorCarga, setErrorCarga] = useState('');
     const [enviando, setEnviando] = useState(false);
 
     // Estado de la cabecera
@@ -31,34 +21,47 @@ export default function SolicitarArticulo() {
     const [detalles, setDetalles] = useState([]);
 
     useEffect(() => {
-        // 1. Cargar artículos reales para obtener sus SKU
+        apiFetch('/obras/')
+            .then((data) => {
+                const lista = Array.isArray(data) ? data : (data.obras || []);
+                setObras(
+                    lista.map((o, idx) => ({
+                        id_obra: o.id_obra ?? o.id ?? idx + 1,
+                        nombre: o.nombre ?? `Obra #${o.id_obra ?? o.id ?? idx + 1}`,
+                        estado: o.estado ?? ''
+                    }))
+                );
+            })
+            .catch((err) => {
+                console.error('Error al cargar obras en SolicitarArticulo:', err.message);
+                setErrorCarga((prev) => prev || 'No se pudieron cargar las obras desde el servidor.');
+            });
+
         apiFetch('/inventario/items/')
             .then((data) => {
                 const lista = Array.isArray(data) ? data : (data.items || []);
-                if (lista.length > 0) {
-                    setArticulos(
-                        lista.map((item, idx) => ({
-                            id_articulo: item.id_articulo ?? item.id ?? idx + 1,
-                            sku: item.sku ?? item.codigo_de_barras ?? `SKU-${idx + 1}`,
-                            nombre: item.nombre ?? 'Sin nombre',
-                            stock_actual: Number(item.stock_actual ?? item.stock ?? 0),
-                            unidad_de_medida: item.unidad_de_medida ?? 'Unidad'
-                        }))
-                    );
-                }
+                setArticulos(
+                    lista.map((item, idx) => ({
+                        id_articulo: item.id_articulo ?? item.id ?? idx + 1,
+                        sku: item.sku ?? item.codigo_de_barras ?? `SKU-${idx + 1}`,
+                        nombre: item.nombre ?? 'Sin nombre',
+                        stock_actual: Number(item.stock_actual ?? item.stock ?? 0),
+                        unidad_de_medida: item.unidad_de_medida ?? 'Unidad'
+                    }))
+                );
             })
             .catch((err) => {
-                console.warn('No se pudo cargar inventario en SolicitarArticulo, usando datos locales:', err.message);
+                console.error('Error al cargar inventario en SolicitarArticulo:', err.message);
+                setErrorCarga((prev) => prev || 'No se pudieron cargar los artículos desde el servidor.');
             });
 
-        // 2. Cargar solicitudes existentes (GET /api/v1/solicitudes/)
         apiFetch('/solicitudes/')
             .then((data) => {
                 const lista = Array.isArray(data) ? data : (data.solicitudes || []);
                 setSolicitudesRecientes(lista);
             })
             .catch((err) => {
-                console.warn('No se pudo cargar historial de solicitudes:', err.message);
+                console.error('Error al cargar historial de solicitudes:', err.message);
             });
     }, []);
 
@@ -122,12 +125,11 @@ export default function SolicitarArticulo() {
             return;
         }
 
-        const obraSeleccionada = obrasMock.find((o) => String(o.id_obra) === String(idObra));
+        const obraSeleccionada = obras.find((o) => String(o.id_obra) === String(idObra));
         const textoObservacion = `Obra #OB-${idObra}${obraSeleccionada ? ` (${obraSeleccionada.nombre})` : ''}${comentarios.trim() ? ` - ${comentarios.trim()}` : ''}`;
 
         setEnviando(true);
         try {
-            // Envía cada ítem al endpoint POST /api/v1/solicitudes/
             const respuestas = [];
             for (const item of detalles) {
                 const resp = await apiFetch('/solicitudes/', {
@@ -150,11 +152,8 @@ export default function SolicitarArticulo() {
             setComentarios('');
             setDetalles([]);
         } catch (err) {
-            console.warn('Error al enviar solicitud al backend, modo simulación local:', err.message);
-            alert('Solicitud registrada (simulación local: el backend no respondió).');
-            setIdObra('');
-            setComentarios('');
-            setDetalles([]);
+            console.error('Error al enviar solicitud al backend:', err.message);
+            alert(`Error al enviar la solicitud: ${err?.message || 'No se pudo comunicar con el servidor.'}`);
         } finally {
             setEnviando(false);
         }
@@ -179,6 +178,12 @@ export default function SolicitarArticulo() {
                 </div>
 
                 <div className="bg-white p-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-warning mb-4" role="alert">
+                            {errorCarga}
+                        </div>
+                    )}
+
                     <form onSubmit={handleSubmit}>
                         {/* Cabecera de la Solicitud: Obra destino */}
                         <div className="row g-4 mb-4">
@@ -192,7 +197,7 @@ export default function SolicitarArticulo() {
                                     className="form-select form-select-lg shadow-sm border-light bg-light text-muted"
                                 >
                                     <option value="">Seleccione una obra...</option>
-                                    {obrasMock.map((obra) => (
+                                    {obras.map((obra) => (
                                         <option key={obra.id_obra} value={obra.id_obra}>
                                             #OB-{obra.id_obra} - {obra.nombre}
                                         </option>

@@ -1,68 +1,116 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function Recepcion() {
     const navigate = useNavigate();
 
-    // Facturas de ejemplo con su detalle (luego vendrán de Django: GET /facturas)
-    const facturasMock = [
-        {
-            id_factura: 901,
-            numero: 'FAC-901',
-            proveedor_nombre: 'Empresa Ñuble SpA',
-            ubicacion_nombre: 'Bodega Central - Pasillo A',
-            fecha_compra: '2026-11-05',
-            monto_neto: 1975555,
-            iva: 375355,
-            monto_bruto: 2350910,
-            detalles: [
-                { id_detalle: 1, id_articulo: 500, articulo_nombre: 'Repuesto Aire Acondicionado', cantidad: 12, precio_unitario: 164629 }
-            ]
-        },
-        {
-            id_factura: 902,
-            numero: 'FAC-902',
-            proveedor_nombre: 'Distribuidora Frío Sur Ltda.',
-            ubicacion_nombre: 'Bodega Frío - Sector Equipos Pesados',
-            fecha_compra: '2026-11-16',
-            monto_neto: 665000,
-            iva: 126350,
-            monto_bruto: 791350,
-            detalles: [
-                { id_detalle: 2, id_articulo: 501, articulo_nombre: 'Filtro de Compresor Industrial', cantidad: 10, precio_unitario: 42000 },
-                { id_detalle: 3, id_articulo: 502, articulo_nombre: 'Válvula de Presión 3/4', cantidad: 10, precio_unitario: 24500 }
-            ]
-        }
-    ];
-
-    // Historial de recepciones registradas (luego vendrá de Django: GET /recepciones)
-    const [recepciones, setRecepciones] = useState([
-        {
-            id_recepcion: 1,
-            id_factura: 901,
-            factura_numero: 'FAC-901',
-            proveedor_nombre: 'Empresa Ñuble SpA',
-            id_usuario: 2,
-            usuario_nombre: 'Carlos Soto (Bodeguero)',
-            fecha_entrega: '2026-11-08',
-            fecha_recepcion: '2026-11-08',
-            firma: 'Carlos Soto M. - Conforme',
-            observaciones: 'Mercadería recibida completa y sin daños en embalaje.'
-        }
-    ]);
-
     const hoy = new Date().toISOString().slice(0, 10);
 
+    const [facturas, setFacturas] = useState([]);
+    const [recepciones, setRecepciones] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
+    const [guardando, setGuardando] = useState(false);
+
     const [formData, setFormData] = useState({
-        id_factura: String(facturasMock[0].id_factura),
+        id_factura: '',
         fecha_entrega: hoy,
         fecha_recepcion: hoy,
         firma: '',
         observaciones: ''
     });
 
-    const facturaSeleccionada = facturasMock.find(
-        (f) => f.id_factura === Number(formData.id_factura)
+    const normalizarFactura = (fac, idx) => ({
+        id_factura: fac.id_factura ?? fac.id ?? idx + 1,
+        numero: fac.numero ?? fac.numero_documento ?? `FAC-${fac.id_factura ?? fac.id ?? idx + 1}`,
+        proveedor_nombre: fac.proveedor_nombre ?? fac.proveedor ?? 'Proveedor',
+        ubicacion_nombre: fac.ubicacion_nombre ?? fac.ubicacion ?? 'Ubicación',
+        fecha_compra: fac.fecha_compra ?? fac.fecha ?? '',
+        monto_neto: Number(fac.monto_neto ?? fac.neto ?? 0),
+        iva: Number(fac.iva ?? 0),
+        monto_bruto: Number(fac.monto_bruto ?? fac.total ?? 0),
+        detalles: Array.isArray(fac.detalles)
+            ? fac.detalles.map((det, dIdx) => ({
+                  id_detalle: det.id_detalle ?? det.id ?? dIdx + 1,
+                  id_articulo: det.id_articulo ?? det.articulo_id ?? det.id ?? dIdx + 1,
+                  articulo_nombre: det.articulo_nombre ?? det.nombre ?? 'Artículo',
+                  cantidad: Number(det.cantidad ?? 0),
+                  precio_unitario: Number(det.precio_unitario ?? det.precio ?? 0)
+              }))
+            : []
+    });
+
+    const normalizarRecepcion = (rec, idx) => ({
+        id_recepcion: rec.id_recepcion ?? rec.id ?? idx + 1,
+        id_factura: rec.id_factura ?? rec.factura_id ?? '',
+        factura_numero: rec.factura_numero ?? rec.numero ?? 'Factura',
+        proveedor_nombre: rec.proveedor_nombre ?? rec.proveedor ?? 'Proveedor',
+        id_usuario: rec.id_usuario ?? null,
+        usuario_nombre: rec.usuario_nombre ?? rec.usuario ?? 'Usuario FYAG',
+        fecha_entrega: rec.fecha_entrega ?? '',
+        fecha_recepcion: rec.fecha_recepcion ?? '',
+        firma: rec.firma ?? '',
+        observaciones: rec.observaciones ?? ''
+    });
+
+    const cargarDatos = async () => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const [resFacturas, resRecepciones] = await Promise.allSettled([
+                apiFetch('/facturas/'),
+                apiFetch('/recepciones/')
+            ]);
+
+            if (resFacturas.status === 'fulfilled') {
+                const rawFac = resFacturas.value;
+                const listaFac = Array.isArray(rawFac) ? rawFac : (rawFac.facturas || rawFac.results || []);
+                const normalizadasFac = listaFac.map(normalizarFactura);
+                setFacturas(normalizadasFac);
+
+                if (normalizadasFac.length > 0) {
+                    setFormData((prev) => {
+                        const existeActual = normalizadasFac.some(
+                            (f) => String(f.id_factura) === String(prev.id_factura)
+                        );
+                        return {
+                            ...prev,
+                            id_factura: existeActual ? prev.id_factura : String(normalizadasFac[0].id_factura)
+                        };
+                    });
+                } else {
+                    setFormData((prev) => ({ ...prev, id_factura: '' }));
+                }
+            } else {
+                setFacturas([]);
+                setFormData((prev) => ({ ...prev, id_factura: '' }));
+                setErrorCarga((prev) => prev || resFacturas.reason?.message || 'No se pudieron cargar las facturas desde el servidor.');
+            }
+
+            if (resRecepciones.status === 'fulfilled') {
+                const rawRec = resRecepciones.value;
+                const listaRec = Array.isArray(rawRec) ? rawRec : (rawRec.recepciones || rawRec.results || []);
+                setRecepciones(listaRec.map(normalizarRecepcion));
+            } else {
+                setRecepciones([]);
+                setErrorCarga((prev) => prev || resRecepciones.reason?.message || 'No se pudieron cargar las recepciones desde el servidor.');
+            }
+        } catch (err) {
+            setFacturas([]);
+            setRecepciones([]);
+            setErrorCarga(err?.message || 'Error al comunicarse con el servidor.');
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    useEffect(() => {
+        cargarDatos();
+    }, []);
+
+    const facturaSeleccionada = facturas.find(
+        (f) => String(f.id_factura) === String(formData.id_factura)
     );
 
     const formatearCLP = (valor) => {
@@ -81,7 +129,7 @@ export default function Recepcion() {
         }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (!facturaSeleccionada) {
@@ -89,8 +137,6 @@ export default function Recepcion() {
             return;
         }
 
-        // Payload exacto para enviar a Django (POST /recepciones)
-        // id_usuario lo asigna el backend desde la sesión autenticada
         const payload = {
             id_factura: Number(formData.id_factura),
             fecha_entrega: formData.fecha_entrega,
@@ -99,31 +145,25 @@ export default function Recepcion() {
             observaciones: formData.observaciones.trim()
         };
 
-        const nuevoId =
-            recepciones.length > 0
-                ? Math.max(...recepciones.map((r) => r.id_recepcion)) + 1
-                : 1;
+        setGuardando(true);
+        try {
+            await apiFetch('/recepciones/', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
 
-        setRecepciones((prev) => [
-            {
-                id_recepcion: nuevoId,
-                ...payload,
-                factura_numero: facturaSeleccionada.numero,
-                proveedor_nombre: facturaSeleccionada.proveedor_nombre,
-                id_usuario: 2,
-                usuario_nombre: 'Usuario Actual'
-            },
-            ...prev
-        ]);
-
-        console.log('Recepción lista para enviar al backend:', payload);
-        alert(`Recepción de ${facturaSeleccionada.numero} guardada correctamente (simulación local).`);
-
-        setFormData((prev) => ({
-            ...prev,
-            firma: '',
-            observaciones: ''
-        }));
+            setFormData((prev) => ({
+                ...prev,
+                firma: '',
+                observaciones: ''
+            }));
+            await cargarDatos();
+            alert(`Recepción de ${facturaSeleccionada.numero} guardada correctamente en el servidor.`);
+        } catch (err) {
+            alert(`No se pudo guardar la recepción: ${err?.message || 'Error en el servidor.'}`);
+        } finally {
+            setGuardando(false);
+        }
     };
 
     return (
@@ -145,6 +185,15 @@ export default function Recepcion() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={cargarDatos} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     {/* Selector de Factura (FK id_factura) */}
                     <div className="row mb-4">
                         <div className="col-12 col-md-8">
@@ -152,14 +201,21 @@ export default function Recepcion() {
                             <select
                                 name="id_factura"
                                 value={formData.id_factura}
+                                disabled={cargando || guardando || facturas.length === 0}
                                 onChange={handleChange}
                                 className="form-select shadow-sm border-light bg-light"
                             >
-                                {facturasMock.map((fac) => (
-                                    <option key={fac.id_factura} value={fac.id_factura}>
-                                        {fac.numero} — {fac.proveedor_nombre} ({fac.fecha_compra})
+                                {facturas.length === 0 ? (
+                                    <option value="">
+                                        {cargando ? 'Cargando facturas...' : 'No hay facturas disponibles'}
                                     </option>
-                                ))}
+                                ) : (
+                                    facturas.map((fac) => (
+                                        <option key={fac.id_factura} value={fac.id_factura}>
+                                            {fac.numero} — {fac.proveedor_nombre} ({fac.fecha_compra})
+                                        </option>
+                                    ))
+                                )}
                             </select>
                         </div>
                     </div>
@@ -170,7 +226,13 @@ export default function Recepcion() {
                         <div className="row g-4">
                             {/* Columna izquierda: Resumen de Factura y Detalle_Factura */}
                             <div className="col-12 col-md-6 border-end pe-md-4">
-                                {facturaSeleccionada && (
+                                {cargando ? (
+                                    <p className="text-muted small mb-0">Cargando detalle de factura...</p>
+                                ) : !facturaSeleccionada ? (
+                                    <p className="text-muted small mb-0">
+                                        No hay una factura seleccionada o disponible desde el servidor.
+                                    </p>
+                                ) : (
                                     <>
                                         <span className="text-muted small mb-3 d-block">
                                             Fecha de Compra: {facturaSeleccionada.fecha_compra}
@@ -200,17 +262,21 @@ export default function Recepcion() {
                                             Artículos en esta Factura ({facturaSeleccionada.detalles.length})
                                         </h6>
                                         <ul className="list-group list-group-flush border rounded small">
-                                            {facturaSeleccionada.detalles.map((det) => (
-                                                <li key={det.id_detalle} className="list-group-item d-flex justify-content-between align-items-center">
-                                                    <span>
-                                                        <strong className="text-muted me-1">#{det.id_articulo}</strong>
-                                                        {det.articulo_nombre}
-                                                    </span>
-                                                    <span className="badge bg-light text-dark border">
-                                                        Cant: {det.cantidad}
-                                                    </span>
-                                                </li>
-                                            ))}
+                                            {facturaSeleccionada.detalles.length === 0 ? (
+                                                <li className="list-group-item text-muted">Sin artículos detallados en esta factura.</li>
+                                            ) : (
+                                                facturaSeleccionada.detalles.map((det) => (
+                                                    <li key={det.id_detalle} className="list-group-item d-flex justify-content-between align-items-center">
+                                                        <span>
+                                                            <strong className="text-muted me-1">#{det.id_articulo}</strong>
+                                                            {det.articulo_nombre}
+                                                        </span>
+                                                        <span className="badge bg-light text-dark border">
+                                                            Cant: {det.cantidad}
+                                                        </span>
+                                                    </li>
+                                                ))
+                                            )}
                                         </ul>
                                     </>
                                 )}
@@ -225,6 +291,7 @@ export default function Recepcion() {
                                             type="date"
                                             name="fecha_entrega"
                                             required
+                                            disabled={guardando}
                                             value={formData.fecha_entrega}
                                             onChange={handleChange}
                                             className="form-control bg-light shadow-sm border-light"
@@ -236,6 +303,7 @@ export default function Recepcion() {
                                             type="date"
                                             name="fecha_recepcion"
                                             required
+                                            disabled={guardando}
                                             value={formData.fecha_recepcion}
                                             onChange={handleChange}
                                             className="form-control bg-light shadow-sm border-light"
@@ -252,6 +320,7 @@ export default function Recepcion() {
                                         name="firma"
                                         maxLength={255}
                                         required
+                                        disabled={guardando}
                                         value={formData.firma}
                                         onChange={handleChange}
                                         className="form-control bg-light shadow-sm border-light"
@@ -267,6 +336,7 @@ export default function Recepcion() {
                                         name="observaciones"
                                         maxLength={500}
                                         rows="4"
+                                        disabled={guardando}
                                         value={formData.observaciones}
                                         onChange={handleChange}
                                         className="form-control flex-grow-1 bg-light shadow-sm border-light"
@@ -278,10 +348,11 @@ export default function Recepcion() {
                                 <div className="d-flex justify-content-end mt-2">
                                     <button
                                         type="submit"
+                                        disabled={guardando || !facturaSeleccionada}
                                         className="btn px-5 py-3 fw-bold text-white shadow-sm"
                                         style={{ backgroundColor: '#2b3d52', borderRadius: '12px' }}
                                     >
-                                        Guardar Recepción
+                                        {guardando ? 'Guardando...' : 'Guardar Recepción'}
                                     </button>
                                 </div>
                             </div>
@@ -305,21 +376,37 @@ export default function Recepcion() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {recepciones.map((rec) => (
-                                    <tr key={rec.id_recepcion}>
-                                        <td className="px-4 fw-semibold text-muted">#{rec.id_recepcion}</td>
-                                        <td>
-                                            <div className="fw-semibold">{rec.factura_numero}</div>
-                                            <div className="small text-muted">{rec.proveedor_nombre}</div>
+                                {cargando ? (
+                                    <tr>
+                                        <td colSpan="5" className="text-center py-4 text-muted">
+                                            Cargando recepciones registradas...
                                         </td>
-                                        <td className="small text-muted">
-                                            <div>Ent: {rec.fecha_entrega}</div>
-                                            <div>Rec: {rec.fecha_recepcion}</div>
-                                        </td>
-                                        <td className="small fw-semibold">{rec.firma}</td>
-                                        <td className="px-4 small text-muted">{rec.observaciones || 'Sin observaciones'}</td>
                                     </tr>
-                                ))}
+                                ) : recepciones.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="5" className="text-center py-4 text-muted">
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No hay recepciones registradas en el servidor.'}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    recepciones.map((rec) => (
+                                        <tr key={rec.id_recepcion}>
+                                            <td className="px-4 fw-semibold text-muted">#{rec.id_recepcion}</td>
+                                            <td>
+                                                <div className="fw-semibold">{rec.factura_numero}</div>
+                                                <div className="small text-muted">{rec.proveedor_nombre}</div>
+                                            </td>
+                                            <td className="small text-muted">
+                                                <div>Ent: {rec.fecha_entrega}</div>
+                                                <div>Rec: {rec.fecha_recepcion}</div>
+                                            </td>
+                                            <td className="small fw-semibold">{rec.firma}</td>
+                                            <td className="px-4 small text-muted">{rec.observaciones || 'Sin observaciones'}</td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>

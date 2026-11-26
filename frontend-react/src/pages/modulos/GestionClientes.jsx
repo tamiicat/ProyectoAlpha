@@ -1,43 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function GestionClientes() {
     const navigate = useNavigate();
 
-    // Datos iniciales alineados a la tabla Cliente (luego vendrán de Django: GET /clientes)
-    const [clientes, setClientes] = useState([
-        {
-            id_cliente: 1,
-            nombre: 'Agroindustrial Ñuble Ltda.',
-            rut: '76.890.123-4',
-            correo_electronico: 'contacto@agronuble.cl',
-            telefono: '942112233',
-            direccion: 'Camino a Coihueco Km 8, Chillán',
-            activo: true
-        },
-        {
-            id_cliente: 2,
-            nombre: 'Frigorífico San Carlos S.A.',
-            rut: '96.451.780-2',
-            correo_electronico: 'operaciones@frigosancarlos.cl',
-            telefono: '983445566',
-            direccion: 'Ruta 5 Sur Km 378, San Carlos',
-            activo: true
-        },
-        {
-            id_cliente: 3,
-            nombre: 'Alberto Andrés Sepúlveda Ortiz',
-            rut: '15.678.901-K',
-            correo_electronico: 'alberto.sepulveda@gmail.com',
-            telefono: '977889900',
-            direccion: 'Pje. Alegría #42, Talca, Maule',
-            activo: true
-        }
-    ]);
-
+    const [clientes, setClientes] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
     const [busqueda, setBusqueda] = useState('');
     const [mostrarModal, setMostrarModal] = useState(false);
     const [modoEdicion, setModoEdicion] = useState(false);
+    const [guardando, setGuardando] = useState(false);
 
     const estadoInicial = {
         id_cliente: null,
@@ -50,6 +24,35 @@ export default function GestionClientes() {
     };
 
     const [formData, setFormData] = useState(estadoInicial);
+
+    const cargarClientes = async () => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const data = await apiFetch('/clientes/');
+            const lista = Array.isArray(data) ? data : (data.clientes || []);
+            setClientes(
+                lista.map((cli, idx) => ({
+                    id_cliente: cli.id_cliente ?? cli.id ?? idx + 1,
+                    nombre: cli.nombre ?? '',
+                    rut: cli.rut ?? '',
+                    correo_electronico: cli.correo_electronico ?? cli.email ?? '',
+                    telefono: cli.telefono ?? '',
+                    direccion: cli.direccion ?? '',
+                    activo: cli.activo !== undefined ? Boolean(cli.activo) : true
+                }))
+            );
+        } catch (err) {
+            setClientes([]);
+            setErrorCarga(err?.message || 'No se pudieron cargar los clientes desde el servidor.');
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    useEffect(() => {
+        cargarClientes();
+    }, []);
 
     const clientesFiltrados = clientes.filter((cli) => {
         const termino = busqueda.toLowerCase();
@@ -81,7 +84,7 @@ export default function GestionClientes() {
         }));
     };
 
-    const handleGuardar = (e) => {
+    const handleGuardar = async (e) => {
         e.preventDefault();
 
         const payload = {
@@ -93,50 +96,43 @@ export default function GestionClientes() {
             activo: formData.activo
         };
 
-        if (modoEdicion) {
-            // PUT/PATCH /clientes/:id en Django
-            setClientes((prev) =>
-                prev.map((cli) =>
-                    cli.id_cliente === formData.id_cliente
-                        ? { id_cliente: formData.id_cliente, ...payload }
-                        : cli
-                )
-            );
-            console.log('Cliente actualizado (simulación local):', {
-                id_cliente: formData.id_cliente,
-                ...payload
-            });
-        } else {
-            // POST /clientes en Django
-            const nuevoId =
-                clientes.length > 0
-                    ? Math.max(...clientes.map((c) => c.id_cliente)) + 1
-                    : 1;
-            setClientes((prev) => [{ id_cliente: nuevoId, ...payload }, ...prev]);
-            console.log('Nuevo cliente listo para enviar al backend:', payload);
+        setGuardando(true);
+        try {
+            if (modoEdicion) {
+                await apiFetch(`/clientes/${formData.id_cliente}/`, {
+                    method: 'PUT',
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                await apiFetch('/clientes/', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+            }
+            await cargarClientes();
+            setMostrarModal(false);
+        } catch (err) {
+            alert(`No se pudo guardar el cliente: ${err?.message || 'Error en el servidor.'}`);
+        } finally {
+            setGuardando(false);
         }
-
-        setMostrarModal(false);
     };
 
-    const handleDesactivar = (cliente) => {
+    const handleDesactivar = async (cliente) => {
         const confirmar = window.confirm(
             `¿Seguro que deseas desactivar al cliente "${cliente.nombre}" (RUT: ${cliente.rut})?`
         );
         if (!confirmar) return;
 
-        // Borrado lógico (activo: false) listo para la API
-        setClientes((prev) =>
-            prev.map((cli) =>
-                cli.id_cliente === cliente.id_cliente
-                    ? { ...cli, activo: false }
-                    : cli
-            )
-        );
-        console.log('Cliente desactivado (simulación local):', {
-            id_cliente: cliente.id_cliente,
-            activo: false
-        });
+        try {
+            await apiFetch(`/clientes/${cliente.id_cliente}/`, {
+                method: 'PATCH',
+                body: JSON.stringify({ activo: false })
+            });
+            await cargarClientes();
+        } catch (err) {
+            alert(`No se pudo desactivar el cliente: ${err?.message || 'Error en el servidor.'}`);
+        }
     };
 
     return (
@@ -166,6 +162,15 @@ export default function GestionClientes() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={cargarClientes} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     {/* Buscador */}
                     <div className="row mb-4">
                         <div className="col-12 col-md-6">
@@ -194,10 +199,18 @@ export default function GestionClientes() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {clientesFiltrados.length === 0 ? (
+                                {cargando ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
-                                            No se encontraron clientes registrados.
+                                            Cargando clientes desde el servidor...
+                                        </td>
+                                    </tr>
+                                ) : clientesFiltrados.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" className="text-center py-4 text-muted">
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No se encontraron clientes registrados.'}
                                         </td>
                                     </tr>
                                 ) : (
@@ -355,6 +368,7 @@ export default function GestionClientes() {
                                 <div className="modal-footer px-4 py-3 bg-light">
                                     <button
                                         type="button"
+                                        disabled={guardando}
                                         className="btn btn-outline-secondary rounded-pill px-4"
                                         onClick={() => setMostrarModal(false)}
                                     >
@@ -362,10 +376,11 @@ export default function GestionClientes() {
                                     </button>
                                     <button
                                         type="submit"
+                                        disabled={guardando}
                                         className="btn text-white rounded-pill px-4 fw-semibold"
                                         style={{ backgroundColor: '#2b3d52' }}
                                     >
-                                        {modoEdicion ? 'Guardar Cambios' : 'Registrar Cliente'}
+                                        {guardando ? 'Guardando...' : (modoEdicion ? 'Guardar Cambios' : 'Registrar Cliente')}
                                     </button>
                                 </div>
                             </form>

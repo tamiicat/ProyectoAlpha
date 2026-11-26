@@ -1,68 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function GestionFacturas() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo para selectores (luego vendrán de la API de Django)
-    const proveedoresMock = [
-        { id_proveedor: 1, razon_social: 'Empresa Ñuble SpA', rut: '76.543.210-1' },
-        { id_proveedor: 2, razon_social: 'Distribuidora Frío Sur Ltda.', rut: '77.123.456-8' },
-        { id_proveedor: 3, razon_social: 'Importadora Industrial Chile S.A.', rut: '96.888.111-K' }
-    ];
-
-    const ubicacionesMock = [
-        { id_ubicacion: 1, bodega: 'Bodega Central', detalle: 'Pasillo A - Estante 1' },
-        { id_ubicacion: 2, bodega: 'Bodega Central', detalle: 'Pasillo B - Estante 3' },
-        { id_ubicacion: 3, bodega: 'Bodega Frío', detalle: 'Sector Equipos Pesados' }
-    ];
-
-    const articulosMock = [
-        { id_articulo: 500, nombre: 'Aire Acondicionado', precio: 350000 },
-        { id_articulo: 501, nombre: 'Válvula de Presión 3/4', precio: 24500 },
-        { id_articulo: 502, nombre: 'Filtro de Compresor Industrial', precio: 42000 }
-    ];
-
-    // Datos iniciales alineados a Factura + Detalle_Factura (GET /facturas)
-    const [facturas, setFacturas] = useState([
-        {
-            id_factura: 901,
-            id_proveedor: 1,
-            proveedor_nombre: 'Empresa Ñuble SpA',
-            id_usuario: 4,
-            usuario_nombre: 'Finanzas FYAG',
-            id_ubicacion: 1,
-            ubicacion_nombre: 'Bodega Central - Pasillo A',
-            numero: 'FAC-901',
-            fecha_compra: '2026-11-05',
-            comprobante: 'comprobante_fac_901.pdf',
-            monto_neto: 1975555,
-            iva: 375355,
-            monto_bruto: 2350910,
-            detalles: [
-                { id_detalle: 1, id_articulo: 500, articulo_nombre: 'Aire Acondicionado', cantidad: 5, precio_unitario: 350000 },
-                { id_detalle: 2, id_articulo: 501, articulo_nombre: 'Válvula de Presión 3/4', cantidad: 9, precio_unitario: 25061.67 }
-            ]
-        },
-        {
-            id_factura: 902,
-            id_proveedor: 2,
-            proveedor_nombre: 'Distribuidora Frío Sur Ltda.',
-            id_usuario: 4,
-            usuario_nombre: 'Finanzas FYAG',
-            id_ubicacion: 3,
-            ubicacion_nombre: 'Bodega Frío - Sector Equipos Pesados',
-            numero: 'FAC-902',
-            fecha_compra: '2026-11-16',
-            comprobante: 'comprobante_fac_902.pdf',
-            monto_neto: 420000,
-            iva: 79800,
-            monto_bruto: 499800,
-            detalles: [
-                { id_detalle: 3, id_articulo: 502, articulo_nombre: 'Filtro de Compresor Industrial', cantidad: 10, precio_unitario: 42000 }
-            ]
-        }
-    ]);
+    const [proveedores, setProveedores] = useState([]);
+    const [ubicaciones, setUbicaciones] = useState([]);
+    const [articulos, setArticulos] = useState([]);
+    const [facturas, setFacturas] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
+    const [guardando, setGuardando] = useState(false);
 
     const [busqueda, setBusqueda] = useState('');
     const [facturaDetalle, setFacturaDetalle] = useState(null);
@@ -80,6 +29,98 @@ export default function GestionFacturas() {
     const [cantidadActual, setCantidadActual] = useState('');
     const [precioUnitarioActual, setPrecioUnitarioActual] = useState('');
     const [detallesNuevos, setDetallesNuevos] = useState([]);
+
+    const normalizarFactura = (fac, idx) => ({
+        id_factura: fac.id_factura ?? fac.id ?? idx + 1,
+        id_proveedor: fac.id_proveedor ?? fac.proveedor_id ?? '',
+        proveedor_nombre: fac.proveedor_nombre ?? fac.proveedor ?? 'Proveedor',
+        id_usuario: fac.id_usuario ?? null,
+        usuario_nombre: fac.usuario_nombre ?? fac.usuario ?? 'Usuario FYAG',
+        id_ubicacion: fac.id_ubicacion ?? fac.ubicacion_id ?? '',
+        ubicacion_nombre: fac.ubicacion_nombre ?? fac.ubicacion ?? 'Ubicación',
+        numero: fac.numero ?? fac.numero_documento ?? `FAC-${fac.id_factura ?? fac.id ?? idx + 1}`,
+        fecha_compra: fac.fecha_compra ?? fac.fecha ?? '',
+        comprobante: fac.comprobante ?? '',
+        monto_neto: Number(fac.monto_neto ?? fac.neto ?? 0),
+        iva: Number(fac.iva ?? 0),
+        monto_bruto: Number(fac.monto_bruto ?? fac.total ?? 0),
+        detalles: Array.isArray(fac.detalles)
+            ? fac.detalles.map((det, dIdx) => ({
+                  id_detalle: det.id_detalle ?? det.id ?? dIdx + 1,
+                  id_articulo: det.id_articulo ?? det.articulo_id ?? det.id ?? dIdx + 1,
+                  articulo_nombre: det.articulo_nombre ?? det.nombre ?? 'Artículo',
+                  cantidad: Number(det.cantidad ?? 0),
+                  precio_unitario: Number(det.precio_unitario ?? det.precio ?? 0)
+              }))
+            : []
+    });
+
+    const cargarFacturasYCatalogos = async () => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const [resFacturas, resProv, resUb, resArt] = await Promise.allSettled([
+                apiFetch('/facturas/'),
+                apiFetch('/proveedores/'),
+                apiFetch('/ubicaciones/'),
+                apiFetch('/inventario/items/')
+            ]);
+
+            if (resFacturas.status === 'fulfilled') {
+                const rawFac = resFacturas.value;
+                const listaFac = Array.isArray(rawFac) ? rawFac : (rawFac.facturas || rawFac.results || []);
+                setFacturas(listaFac.map(normalizarFactura));
+            } else {
+                setFacturas([]);
+                setErrorCarga(resFacturas.reason?.message || 'No se pudieron cargar las facturas desde el servidor.');
+            }
+
+            if (resProv.status === 'fulfilled') {
+                const rawProv = resProv.value;
+                const listaProv = Array.isArray(rawProv) ? rawProv : (rawProv.proveedores || rawProv.results || []);
+                setProveedores(
+                    listaProv.map((p, idx) => ({
+                        id_proveedor: p.id_proveedor ?? p.id ?? idx + 1,
+                        razon_social: p.razon_social ?? p.nombre ?? 'Proveedor',
+                        rut: p.rut ?? ''
+                    }))
+                );
+            }
+
+            if (resUb.status === 'fulfilled') {
+                const rawUb = resUb.value;
+                const listaUb = Array.isArray(rawUb) ? rawUb : (rawUb.ubicaciones || rawUb.results || []);
+                setUbicaciones(
+                    listaUb.map((u, idx) => ({
+                        id_ubicacion: u.id_ubicacion ?? u.id ?? idx + 1,
+                        bodega: u.bodega ?? u.nombre ?? 'Bodega',
+                        detalle: u.detalle ?? u.descripcion ?? ''
+                    }))
+                );
+            }
+
+            if (resArt.status === 'fulfilled') {
+                const rawArt = resArt.value;
+                const listaArt = Array.isArray(rawArt) ? rawArt : (rawArt.items || rawArt.articulos || rawArt.results || []);
+                setArticulos(
+                    listaArt.map((a, idx) => ({
+                        id_articulo: a.id_articulo ?? a.id ?? idx + 1,
+                        nombre: a.nombre ?? 'Artículo',
+                        precio: Number(a.precio ?? a.precio_unitario ?? 0)
+                    }))
+                );
+            }
+        } catch (err) {
+            setFacturas([]);
+            setErrorCarga(err?.message || 'Error al comunicarse con el servidor.');
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    useEffect(() => {
+        cargarFacturasYCatalogos();
+    }, []);
 
     const formatearCLP = (valor) => {
         return new Intl.NumberFormat('es-CL', {
@@ -102,7 +143,7 @@ export default function GestionFacturas() {
     const handleSeleccionarArticulo = (e) => {
         const idArt = e.target.value;
         setIdArticuloActual(idArt);
-        const art = articulosMock.find((a) => a.id_articulo === Number(idArt));
+        const art = articulos.find((a) => String(a.id_articulo) === String(idArt));
         setPrecioUnitarioActual(art ? String(art.precio) : '');
     };
 
@@ -115,7 +156,7 @@ export default function GestionFacturas() {
             return;
         }
 
-        const art = articulosMock.find((a) => a.id_articulo === Number(idArticuloActual));
+        const art = articulos.find((a) => String(a.id_articulo) === String(idArticuloActual));
         if (!art) return;
 
         setDetallesNuevos((prev) => [
@@ -146,7 +187,7 @@ export default function GestionFacturas() {
     const ivaCalculado = Math.round(montoNetoCalculado * 0.19);
     const montoBrutoCalculado = montoNetoCalculado + ivaCalculado;
 
-    const handleGuardarFactura = (e) => {
+    const handleGuardarFactura = async (e) => {
         e.preventDefault();
 
         if (detallesNuevos.length === 0) {
@@ -154,37 +195,15 @@ export default function GestionFacturas() {
             return;
         }
 
-        const provSel = proveedoresMock.find((p) => p.id_proveedor === Number(nuevaFactura.id_proveedor));
-        const ubSel = ubicacionesMock.find((u) => u.id_ubicacion === Number(nuevaFactura.id_ubicacion));
-        const nuevoId = facturas.length > 0 ? Math.max(...facturas.map((f) => f.id_factura)) + 1 : 901;
-
-        const facturaCreada = {
-            id_factura: nuevoId,
+        const payload = {
             id_proveedor: Number(nuevaFactura.id_proveedor),
-            proveedor_nombre: provSel ? provSel.razon_social : 'Proveedor',
-            id_usuario: 4, // En producción lo asigna Django según sesión
-            usuario_nombre: 'Usuario Actual',
             id_ubicacion: Number(nuevaFactura.id_ubicacion),
-            ubicacion_nombre: ubSel ? `${ubSel.bodega} - ${ubSel.detalle}` : 'Ubicación',
             numero: nuevaFactura.numero.trim(),
             fecha_compra: nuevaFactura.fecha_compra,
             comprobante: nuevaFactura.comprobante.trim(),
             monto_neto: montoNetoCalculado,
             iva: ivaCalculado,
             monto_bruto: montoBrutoCalculado,
-            detalles: detallesNuevos
-        };
-
-        // Payload listo para enviar a Django (POST /facturas)
-        const payload = {
-            id_proveedor: facturaCreada.id_proveedor,
-            id_ubicacion: facturaCreada.id_ubicacion,
-            numero: facturaCreada.numero,
-            fecha_compra: facturaCreada.fecha_compra,
-            comprobante: facturaCreada.comprobante,
-            monto_neto: facturaCreada.monto_neto,
-            iva: facturaCreada.iva,
-            monto_bruto: facturaCreada.monto_bruto,
             detalles: detallesNuevos.map((d) => ({
                 id_articulo: d.id_articulo,
                 cantidad: d.cantidad,
@@ -192,17 +211,27 @@ export default function GestionFacturas() {
             }))
         };
 
-        console.log('Factura lista para enviar al backend:', payload);
-        setFacturas((prev) => [facturaCreada, ...prev]);
-        setMostrarModalNueva(false);
-        setNuevaFactura({
-            id_proveedor: '',
-            id_ubicacion: '',
-            numero: '',
-            fecha_compra: new Date().toISOString().slice(0, 10),
-            comprobante: ''
-        });
-        setDetallesNuevos([]);
+        setGuardando(true);
+        try {
+            await apiFetch('/facturas/', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            await cargarFacturasYCatalogos();
+            setMostrarModalNueva(false);
+            setNuevaFactura({
+                id_proveedor: '',
+                id_ubicacion: '',
+                numero: '',
+                fecha_compra: new Date().toISOString().slice(0, 10),
+                comprobante: ''
+            });
+            setDetallesNuevos([]);
+        } catch (err) {
+            alert(`No se pudo registrar la factura: ${err?.message || 'Error en el servidor.'}`);
+        } finally {
+            setGuardando(false);
+        }
     };
 
     return (
@@ -232,6 +261,15 @@ export default function GestionFacturas() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={cargarFacturasYCatalogos} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     {/* Buscador */}
                     <div className="row mb-4">
                         <div className="col-12 col-md-6">
@@ -260,10 +298,18 @@ export default function GestionFacturas() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {facturasFiltradas.length === 0 ? (
+                                {cargando ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
-                                            No se encontraron facturas registradas.
+                                            Cargando facturas desde el servidor...
+                                        </td>
+                                    </tr>
+                                ) : facturasFiltradas.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" className="text-center py-4 text-muted">
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No se encontraron facturas registradas.'}
                                         </td>
                                     </tr>
                                 ) : (
@@ -433,9 +479,9 @@ export default function GestionFacturas() {
                                                 className="form-select bg-light text-muted"
                                             >
                                                 <option value="">Seleccione un proveedor...</option>
-                                                {proveedoresMock.map((prov) => (
+                                                {proveedores.map((prov) => (
                                                     <option key={prov.id_proveedor} value={prov.id_proveedor}>
-                                                        {prov.razon_social} ({prov.rut})
+                                                        {prov.razon_social}{prov.rut ? ` (${prov.rut})` : ''}
                                                     </option>
                                                 ))}
                                             </select>
@@ -449,9 +495,9 @@ export default function GestionFacturas() {
                                                 className="form-select bg-light text-muted"
                                             >
                                                 <option value="">Seleccione una ubicación...</option>
-                                                {ubicacionesMock.map((ub) => (
+                                                {ubicaciones.map((ub) => (
                                                     <option key={ub.id_ubicacion} value={ub.id_ubicacion}>
-                                                        {ub.bodega} - {ub.detalle}
+                                                        {ub.bodega}{ub.detalle ? ` - ${ub.detalle}` : ''}
                                                     </option>
                                                 ))}
                                             </select>
@@ -469,7 +515,7 @@ export default function GestionFacturas() {
                                                     className="form-select bg-white text-muted"
                                                 >
                                                     <option value="">Seleccione un artículo...</option>
-                                                    {articulosMock.map((art) => (
+                                                    {articulos.map((art) => (
                                                         <option key={art.id_articulo} value={art.id_articulo}>
                                                             {art.nombre}
                                                         </option>
@@ -541,6 +587,7 @@ export default function GestionFacturas() {
                                 <div className="modal-footer px-4 py-3 bg-light">
                                     <button
                                         type="button"
+                                        disabled={guardando}
                                         className="btn btn-outline-secondary rounded-pill px-4"
                                         onClick={() => setMostrarModalNueva(false)}
                                     >
@@ -548,10 +595,11 @@ export default function GestionFacturas() {
                                     </button>
                                     <button
                                         type="submit"
+                                        disabled={guardando}
                                         className="btn text-white rounded-pill px-4 fw-semibold"
                                         style={{ backgroundColor: '#2b3d52' }}
                                     >
-                                        Guardar Factura
+                                        {guardando ? 'Guardando...' : 'Guardar Factura'}
                                     </button>
                                 </div>
                             </form>

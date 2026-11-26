@@ -1,85 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function Despacho() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo para selectores (luego vendrán de la API de Django)
-    const clientesMock = [
-        { id_cliente: 1, nombre: 'Alberto Andrés Sepúlveda Ortiz', direccion: 'Pje. Alegría #42, Talca, Maule' },
-        { id_cliente: 2, nombre: 'Agrícola Santa Rosa Ltda.', direccion: 'Camino a Coihueco Km 8, Chillán' },
-        { id_cliente: 3, nombre: 'Comercial El Roble SpA', direccion: 'Av. Libertad #850, Chillán' }
-    ];
-
-    const obrasMock = [
-        { id_obra: 201, nombre: 'Instalación Climatización Centro' },
-        { id_obra: 202, nombre: 'Cámara de Maduración Agroindustrial' }
-    ];
-
-    const articulosMock = [
-        { id_articulo: 500, nombre: 'Aire Acondicionado', stock_actual: 45, unidad_de_medida: 'Unidad' },
-        { id_articulo: 501, nombre: 'Filtro de Compresor Industrial', stock_actual: 25, unidad_de_medida: 'Unidad' },
-        { id_articulo: 502, nombre: 'Termostato Digital Trifásico', stock_actual: 18, unidad_de_medida: 'Unidad' }
-    ];
-
-    // Datos iniciales alineados a Despacho + Detalle_Despacho (GET /despachos)
-    const [despachos, setDespachos] = useState([
-        {
-            id_despacho: 1,
-            id_cliente: 1,
-            cliente_nombre: 'Alberto Andrés Sepúlveda Ortiz',
-            id_usuario: 2,
-            usuario_nombre: 'Carlos Soto (Bodeguero)',
-            id_obra: 201,
-            obra_nombre: 'Instalación Climatización Centro',
-            fecha_despacho: '2026-10-03',
-            fecha_entrega: '2026-10-06',
-            estado: 'pendiente',
-            boleta: 'Boleta N° 45892',
-            direccion_entrega: 'Pje. Alegría #42, Talca, Maule',
-            detalles: [
-                { id_detalle: 1, id_articulo: 500, articulo_nombre: 'Aire Acondicionado', unidad_de_medida: 'Unidad', cantidad: 1 }
-            ]
-        },
-        {
-            id_despacho: 2,
-            id_cliente: 2,
-            cliente_nombre: 'Agrícola Santa Rosa Ltda.',
-            id_usuario: 2,
-            usuario_nombre: 'Carlos Soto (Bodeguero)',
-            id_obra: 202,
-            obra_nombre: 'Cámara de Maduración Agroindustrial',
-            fecha_despacho: '2026-11-12',
-            fecha_entrega: '2026-11-15',
-            estado: 'despachado',
-            boleta: 'Boleta N° 46010',
-            direccion_entrega: 'Camino a Coihueco Km 8, Chillán',
-            detalles: [
-                { id_detalle: 2, id_articulo: 501, articulo_nombre: 'Filtro de Compresor Industrial', unidad_de_medida: 'Unidad', cantidad: 4 },
-                { id_detalle: 3, id_articulo: 502, articulo_nombre: 'Termostato Digital Trifásico', unidad_de_medida: 'Unidad', cantidad: 2 }
-            ]
-        },
-        {
-            id_despacho: 3,
-            id_cliente: 3,
-            cliente_nombre: 'Comercial El Roble SpA',
-            id_usuario: 2,
-            usuario_nombre: 'Carlos Soto (Bodeguero)',
-            id_obra: null,
-            obra_nombre: null,
-            fecha_despacho: '2026-11-18',
-            fecha_entrega: '2026-11-20',
-            estado: 'entregado',
-            boleta: 'Boleta N° 46105',
-            direccion_entrega: 'Av. Libertad #850, Chillán',
-            detalles: [
-                { id_detalle: 4, id_articulo: 502, articulo_nombre: 'Termostato Digital Trifásico', unidad_de_medida: 'Unidad', cantidad: 3 }
-            ]
-        }
-    ]);
-
-    const [seleccionadoId, setSeleccionadoId] = useState(1);
+    const [clientes, setClientes] = useState([]);
+    const [obras, setObras] = useState([]);
+    const [articulos, setArticulos] = useState([]);
+    const [despachos, setDespachos] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
+    const [seleccionadoId, setSeleccionadoId] = useState('');
     const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
+    const [guardando, setGuardando] = useState(false);
 
     // Estado del formulario para crear un nuevo despacho
     const [nuevoForm, setNuevoForm] = useState({
@@ -94,7 +28,108 @@ export default function Despacho() {
     const [cantidadActual, setCantidadActual] = useState('');
     const [detallesNuevos, setDetallesNuevos] = useState([]);
 
-    const despacho = despachos.find((d) => d.id_despacho === Number(seleccionadoId)) || despachos[0];
+    const normalizarDespacho = (d, idx) => ({
+        id_despacho: d.id_despacho ?? d.id ?? idx + 1,
+        id_cliente: d.id_cliente ?? d.cliente_id ?? '',
+        cliente_nombre: d.cliente_nombre ?? d.cliente ?? 'Cliente',
+        id_usuario: d.id_usuario ?? null,
+        usuario_nombre: d.usuario_nombre ?? d.usuario ?? 'Usuario FYAG',
+        id_obra: d.id_obra ?? d.obra_id ?? null,
+        obra_nombre: d.obra_nombre ?? d.obra ?? null,
+        fecha_despacho: d.fecha_despacho ?? d.fecha ?? '',
+        fecha_entrega: d.fecha_entrega ?? null,
+        estado: (d.estado || 'pendiente').toLowerCase(),
+        boleta: d.boleta ?? '',
+        direccion_entrega: d.direccion_entrega ?? d.direccion ?? '',
+        detalles: Array.isArray(d.detalles)
+            ? d.detalles.map((det, dIdx) => ({
+                  id_detalle: det.id_detalle ?? det.id ?? dIdx + 1,
+                  id_articulo: det.id_articulo ?? det.articulo_id ?? det.id ?? dIdx + 1,
+                  articulo_nombre: det.articulo_nombre ?? det.nombre ?? 'Artículo',
+                  unidad_de_medida: det.unidad_de_medida ?? 'Unidad',
+                  cantidad: Number(det.cantidad ?? 0)
+              }))
+            : []
+    });
+
+    const cargarCatalogosYDespachos = async (mantenerSeleccion = null) => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const [resDespachos, resClientes, resObras, resArticulos] = await Promise.allSettled([
+                apiFetch('/despachos/'),
+                apiFetch('/clientes/'),
+                apiFetch('/obras/'),
+                apiFetch('/inventario/items/')
+            ]);
+
+            if (resDespachos.status === 'fulfilled') {
+                const rawDesp = resDespachos.value;
+                const listaDesp = Array.isArray(rawDesp) ? rawDesp : (rawDesp.despachos || []);
+                const normalizados = listaDesp.map(normalizarDespacho);
+                setDespachos(normalizados);
+                if (normalizados.length > 0) {
+                    const objetivo = mantenerSeleccion ?? normalizados[0].id_despacho;
+                    const existe = normalizados.some((item) => Number(item.id_despacho) === Number(objetivo));
+                    setSeleccionadoId(existe ? Number(objetivo) : Number(normalizados[0].id_despacho));
+                } else {
+                    setSeleccionadoId('');
+                }
+            } else {
+                setDespachos([]);
+                setSeleccionadoId('');
+                setErrorCarga(resDespachos.reason?.message || 'No se pudieron cargar los despachos desde el servidor.');
+            }
+
+            if (resClientes.status === 'fulfilled') {
+                const rawCli = resClientes.value;
+                const listaCli = Array.isArray(rawCli) ? rawCli : (rawCli.clientes || []);
+                setClientes(
+                    listaCli.map((c, idx) => ({
+                        id_cliente: c.id_cliente ?? c.id ?? idx + 1,
+                        nombre: c.nombre ?? c.razon_social ?? 'Cliente',
+                        direccion: c.direccion ?? ''
+                    }))
+                );
+            }
+
+            if (resObras.status === 'fulfilled') {
+                const rawObr = resObras.value;
+                const listaObr = Array.isArray(rawObr) ? rawObr : (rawObr.obras || []);
+                setObras(
+                    listaObr.map((o, idx) => ({
+                        id_obra: o.id_obra ?? o.id ?? idx + 1,
+                        nombre: o.nombre ?? `Obra #${o.id_obra ?? o.id ?? idx + 1}`
+                    }))
+                );
+            }
+
+            if (resArticulos.status === 'fulfilled') {
+                const rawArt = resArticulos.value;
+                const listaArt = Array.isArray(rawArt) ? rawArt : (rawArt.items || []);
+                setArticulos(
+                    listaArt.map((a, idx) => ({
+                        id_articulo: a.id_articulo ?? a.id ?? idx + 1,
+                        nombre: a.nombre ?? 'Artículo',
+                        stock_actual: Number(a.stock_actual ?? a.stock ?? 0),
+                        unidad_de_medida: a.unidad_de_medida ?? 'Unidad'
+                    }))
+                );
+            }
+        } catch (err) {
+            setDespachos([]);
+            setSeleccionadoId('');
+            setErrorCarga(err?.message || 'Error al comunicarse con el servidor.');
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    useEffect(() => {
+        cargarCatalogosYDespachos();
+    }, []);
+
+    const despacho = despachos.find((d) => Number(d.id_despacho) === Number(seleccionadoId)) || null;
 
     const obtenerBadgeEstado = (estado) => {
         const estilos = {
@@ -107,28 +142,27 @@ export default function Despacho() {
         return <span className={`badge border px-3 py-2 fs-6 ${config.clase}`}>{config.texto}</span>;
     };
 
-    const handleCambiarEstado = (nuevoEstado) => {
+    const handleCambiarEstado = async (nuevoEstado) => {
         if (!despacho) return;
         if (nuevoEstado === 'anulado') {
             const confirmar = window.confirm(`¿Seguro que deseas anular el Despacho #${String(despacho.id_despacho).padStart(3, '0')}?`);
             if (!confirmar) return;
         }
 
-        // PATCH /despachos/:id/ en Django
-        setDespachos((prev) =>
-            prev.map((d) =>
-                d.id_despacho === despacho.id_despacho ? { ...d, estado: nuevoEstado } : d
-            )
-        );
-        console.log('Cambio de estado de despacho (simulación local):', {
-            id_despacho: despacho.id_despacho,
-            estado: nuevoEstado
-        });
+        try {
+            await apiFetch(`/despachos/${despacho.id_despacho}/`, {
+                method: 'PATCH',
+                body: JSON.stringify({ estado: nuevoEstado })
+            });
+            await cargarCatalogosYDespachos(despacho.id_despacho);
+        } catch (err) {
+            alert(`No se pudo actualizar el estado del despacho: ${err?.message || 'Error en el servidor.'}`);
+        }
     };
 
     const handleCambioClienteNuevo = (e) => {
         const idCli = e.target.value;
-        const cli = clientesMock.find((c) => c.id_cliente === Number(idCli));
+        const cli = clientes.find((c) => String(c.id_cliente) === String(idCli));
         setNuevoForm((prev) => ({
             ...prev,
             id_cliente: idCli,
@@ -142,7 +176,7 @@ export default function Despacho() {
             alert('Seleccione un artículo y una cantidad válida.');
             return;
         }
-        const art = articulosMock.find((a) => a.id_articulo === Number(idArticuloActual));
+        const art = articulos.find((a) => String(a.id_articulo) === String(idArticuloActual));
         if (!art) return;
 
         const existe = detallesNuevos.find((item) => item.id_articulo === art.id_articulo);
@@ -174,61 +208,50 @@ export default function Despacho() {
         setDetallesNuevos((prev) => prev.filter((item) => item.id_articulo !== id_articulo));
     };
 
-    const handleCrearDespacho = (e) => {
+    const handleCrearDespacho = async (e) => {
         e.preventDefault();
         if (detallesNuevos.length === 0) {
             alert('Debe agregar al menos un artículo al despacho.');
             return;
         }
 
-        const nuevoId = despachos.length > 0 ? Math.max(...despachos.map((d) => d.id_despacho)) + 1 : 1;
-        const cli = clientesMock.find((c) => c.id_cliente === Number(nuevoForm.id_cliente));
-        const obra = obrasMock.find((o) => o.id_obra === Number(nuevoForm.id_obra));
-
-        const nuevoDespacho = {
-            id_despacho: nuevoId,
+        const payload = {
             id_cliente: Number(nuevoForm.id_cliente),
-            cliente_nombre: cli ? cli.nombre : 'Cliente',
-            id_usuario: 2, // En producción lo asigna Django según sesión
-            usuario_nombre: 'Usuario Actual',
             id_obra: nuevoForm.id_obra ? Number(nuevoForm.id_obra) : null,
-            obra_nombre: obra ? obra.nombre : null,
             fecha_despacho: nuevoForm.fecha_despacho,
             fecha_entrega: nuevoForm.fecha_entrega || null,
             estado: 'pendiente',
             boleta: nuevoForm.boleta.trim(),
             direccion_entrega: nuevoForm.direccion_entrega.trim(),
-            detalles: detallesNuevos
-        };
-
-        // Payload exacto para POST /despachos en Django
-        const payload = {
-            id_cliente: nuevoDespacho.id_cliente,
-            id_obra: nuevoDespacho.id_obra,
-            fecha_despacho: nuevoDespacho.fecha_despacho,
-            fecha_entrega: nuevoDespacho.fecha_entrega,
-            estado: 'pendiente',
-            boleta: nuevoDespacho.boleta,
-            direccion_entrega: nuevoDespacho.direccion_entrega,
             detalles: detallesNuevos.map((d) => ({
                 id_articulo: d.id_articulo,
                 cantidad: d.cantidad
             }))
         };
 
-        console.log('Nuevo despacho listo para enviar al backend:', payload);
-        setDespachos((prev) => [nuevoDespacho, ...prev]);
-        setSeleccionadoId(nuevoId);
-        setMostrarModalNuevo(false);
-        setNuevoForm({
-            id_cliente: '',
-            id_obra: '',
-            fecha_despacho: new Date().toISOString().slice(0, 10),
-            fecha_entrega: '',
-            boleta: '',
-            direccion_entrega: ''
-        });
-        setDetallesNuevos([]);
+        setGuardando(true);
+        try {
+            const resp = await apiFetch('/despachos/', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            const nuevoId = resp?.id_despacho ?? resp?.id ?? null;
+            await cargarCatalogosYDespachos(nuevoId);
+            setMostrarModalNuevo(false);
+            setNuevoForm({
+                id_cliente: '',
+                id_obra: '',
+                fecha_despacho: new Date().toISOString().slice(0, 10),
+                fecha_entrega: '',
+                boleta: '',
+                direccion_entrega: ''
+            });
+            setDetallesNuevos([]);
+        } catch (err) {
+            alert(`No se pudo registrar el despacho: ${err?.message || 'Error en el servidor.'}`);
+        } finally {
+            setGuardando(false);
+        }
     };
 
     return (
@@ -260,6 +283,15 @@ export default function Despacho() {
 
                 {/* Contenido */}
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={() => cargarCatalogosYDespachos()} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     {/* Selector de Despacho */}
                     <div className="row mb-4 align-items-center">
                         <div className="col-12 col-md-8">
@@ -267,13 +299,20 @@ export default function Despacho() {
                             <select
                                 className="form-select shadow-sm border-light bg-light"
                                 value={seleccionadoId}
+                                disabled={cargando || despachos.length === 0}
                                 onChange={(e) => setSeleccionadoId(Number(e.target.value))}
                             >
-                                {despachos.map((item) => (
-                                    <option key={item.id_despacho} value={item.id_despacho}>
-                                        Despacho #{String(item.id_despacho).padStart(3, '0')} — {item.cliente_nombre} ({item.estado})
+                                {despachos.length === 0 ? (
+                                    <option value="">
+                                        {cargando ? 'Cargando despachos...' : 'No hay despachos registrados'}
                                     </option>
-                                ))}
+                                ) : (
+                                    despachos.map((item) => (
+                                        <option key={item.id_despacho} value={item.id_despacho}>
+                                            Despacho #{String(item.id_despacho).padStart(3, '0')} — {item.cliente_nombre} ({item.estado})
+                                        </option>
+                                    ))
+                                )}
                             </select>
                         </div>
                         {despacho && (
@@ -285,7 +324,15 @@ export default function Despacho() {
 
                     <hr className="mb-4 opacity-25" />
 
-                    {despacho && (
+                    {cargando ? (
+                        <div className="text-center py-4 text-muted">Cargando información de despachos...</div>
+                    ) : !despacho ? (
+                        <div className="text-center py-4 text-muted">
+                            {errorCarga
+                                ? 'No hay despachos disponibles por un error de conexión o autenticación.'
+                                : 'No hay despachos registrados en el servidor.'}
+                        </div>
+                    ) : (
                         <>
                             <div className="row g-4 align-items-start mb-4">
                                 {/* Datos de la tabla Despacho */}
@@ -294,7 +341,7 @@ export default function Despacho() {
                                     <p className="mb-2"><strong>Cliente:</strong> {despacho.cliente_nombre}</p>
                                     <p className="mb-2">
                                         <strong>Obra asociada:</strong>{' '}
-                                        {despacho.id_obra ? `#OB-${despacho.id_obra} - ${despacho.obra_nombre}` : <span className="text-muted">Sin obra asociada (venta directa)</span>}
+                                        {despacho.id_obra ? `#OB-${despacho.id_obra}${despacho.obra_nombre ? ` - ${despacho.obra_nombre}` : ''}` : <span className="text-muted">Sin obra asociada (venta directa)</span>}
                                     </p>
                                     <p className="mb-2"><strong>Responsable:</strong> {despacho.usuario_nombre}</p>
                                     <p className="mb-3"><strong>Dirección de entrega:</strong> {despacho.direccion_entrega}</p>
@@ -375,15 +422,23 @@ export default function Despacho() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {despacho.detalles.map((det) => (
-                                            <tr key={det.id_detalle}>
-                                                <td className="px-4 text-muted fw-semibold">#{det.id_articulo}</td>
-                                                <td className="fw-semibold">{det.articulo_nombre}</td>
-                                                <td className="text-center px-4 fw-bold">
-                                                    {det.cantidad} <span className="fw-normal text-muted small">{det.unidad_de_medida}</span>
+                                        {despacho.detalles.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="3" className="text-center py-3 text-muted">
+                                                    No hay artículos asociados a este despacho.
                                                 </td>
                                             </tr>
-                                        ))}
+                                        ) : (
+                                            despacho.detalles.map((det) => (
+                                                <tr key={det.id_detalle}>
+                                                    <td className="px-4 text-muted fw-semibold">#{det.id_articulo}</td>
+                                                    <td className="fw-semibold">{det.articulo_nombre}</td>
+                                                    <td className="text-center px-4 fw-bold">
+                                                        {det.cantidad} <span className="fw-normal text-muted small">{det.unidad_de_medida}</span>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -417,7 +472,7 @@ export default function Despacho() {
                                                 className="form-select bg-light text-muted"
                                             >
                                                 <option value="">Seleccione un cliente...</option>
-                                                {clientesMock.map((cli) => (
+                                                {clientes.map((cli) => (
                                                     <option key={cli.id_cliente} value={cli.id_cliente}>
                                                         {cli.nombre}
                                                     </option>
@@ -432,7 +487,7 @@ export default function Despacho() {
                                                 className="form-select bg-light text-muted"
                                             >
                                                 <option value="">Sin obra (venta directa)</option>
-                                                {obrasMock.map((obra) => (
+                                                {obras.map((obra) => (
                                                     <option key={obra.id_obra} value={obra.id_obra}>
                                                         #OB-{obra.id_obra} - {obra.nombre}
                                                     </option>
@@ -495,7 +550,7 @@ export default function Despacho() {
                                                     className="form-select bg-white text-muted"
                                                 >
                                                     <option value="">Seleccione un artículo...</option>
-                                                    {articulosMock.map((art) => (
+                                                    {articulos.map((art) => (
                                                         <option key={art.id_articulo} value={art.id_articulo}>
                                                             {art.nombre} (Stock: {art.stock_actual})
                                                         </option>
@@ -546,6 +601,7 @@ export default function Despacho() {
                                 <div className="modal-footer px-4 py-3 bg-light">
                                     <button
                                         type="button"
+                                        disabled={guardando}
                                         className="btn btn-outline-secondary rounded-pill px-4"
                                         onClick={() => setMostrarModalNuevo(false)}
                                     >
@@ -553,10 +609,11 @@ export default function Despacho() {
                                     </button>
                                     <button
                                         type="submit"
+                                        disabled={guardando}
                                         className="btn text-white rounded-pill px-4 fw-semibold"
                                         style={{ backgroundColor: '#2b3d52' }}
                                     >
-                                        Guardar Despacho
+                                        {guardando ? 'Guardando...' : 'Guardar Despacho'}
                                     </button>
                                 </div>
                             </form>

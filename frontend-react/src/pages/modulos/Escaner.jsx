@@ -1,63 +1,39 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function Escaner() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo alineados a Articulo (luego vendrán de Django: GET /articulos?codigo_de_barras=...)
-    const [articulos, setArticulos] = useState([
-        {
-            id_articulo: 500,
-            codigo_de_barras: '12034298034821',
-            nombre: 'Aire Acondicionado',
-            categoria_nombre: 'Climatización',
-            ubicacion_nombre: 'Bodega Central - Pasillo A',
-            stock_actual: 45,
-            stock_critico: 10,
-            unidad_de_medida: 'Unidad',
-            precio: 350000,
-            estado: 'en bodega',
-            activo: true
-        },
-        {
-            id_articulo: 501,
-            codigo_de_barras: '789456123012',
-            nombre: 'Filtro de Compresor Industrial',
-            categoria_nombre: 'Repuestos y Componentes',
-            ubicacion_nombre: 'Bodega Central - Pasillo B',
-            stock_actual: 12,
-            stock_critico: 5,
-            unidad_de_medida: 'Unidad',
-            precio: 42000,
-            estado: 'en bodega',
-            activo: true
-        },
-        {
-            id_articulo: 502,
-            codigo_de_barras: '7801234567890',
-            nombre: 'Válvula de Presión 3/4',
-            categoria_nombre: 'Repuestos y Componentes',
-            ubicacion_nombre: 'Bodega Frío - Sector Equipos',
-            stock_actual: 0,
-            stock_critico: 5,
-            unidad_de_medida: 'Unidad',
-            precio: 24500,
-            estado: 'sin stock',
-            activo: true
-        }
-    ]);
-
-    const [codigoInput, setCodigoInput] = useState('789456123012');
-    const [articuloDetectado, setArticuloDetectado] = useState(articulos[1]);
+    const [codigoInput, setCodigoInput] = useState('');
+    const [articuloDetectado, setArticuloDetectado] = useState(null);
     const [noEncontrado, setNoEncontrado] = useState(false);
+    const [errorConsulta, setErrorConsulta] = useState('');
+    const [buscando, setBuscando] = useState(false);
+    const [confirmando, setConfirmando] = useState(false);
 
     // Campos para registrar el movimiento en Cardex tras la lectura
     const [tipoMovimiento, setTipoMovimiento] = useState('ingreso');
     const [cantidad, setCantidad] = useState(1);
 
-    const buscarPorCodigo = (codigo) => {
+    const normalizarArticulo = (item) => ({
+        id_articulo: item.id_articulo ?? item.id ?? '-',
+        codigo_de_barras: item.codigo_de_barras ?? item.sku ?? '',
+        nombre: item.nombre ?? 'Sin nombre',
+        categoria_nombre: item.categoria_nombre ?? item.categoria ?? 'Sin categoría',
+        ubicacion_nombre: item.ubicacion_nombre ?? item.ubicacion ?? 'Sin ubicación',
+        stock_actual: Number(item.stock_actual ?? item.stock ?? 0),
+        stock_critico: Number(item.stock_critico ?? 0),
+        unidad_de_medida: item.unidad_de_medida ?? 'Unidad',
+        precio: Number(item.precio ?? item.precio_unitario ?? 0),
+        estado: item.estado ?? (Number(item.stock_actual ?? item.stock ?? 0) > 0 ? 'en bodega' : 'sin stock'),
+        activo: item.activo !== undefined ? Boolean(item.activo) : true
+    });
+
+    const buscarPorCodigo = async (codigo) => {
         const limpio = codigo.trim();
         setCodigoInput(limpio);
+        setErrorConsulta('');
 
         if (!limpio) {
             setArticuloDetectado(null);
@@ -65,21 +41,34 @@ export default function Escaner() {
             return;
         }
 
-        const encontrado = articulos.find((art) => art.codigo_de_barras === limpio);
-        if (encontrado) {
-            setArticuloDetectado(encontrado);
-            setNoEncontrado(false);
-            setCantidad(1);
-        } else {
-            setArticuloDetectado(null);
-            setNoEncontrado(true);
-        }
-    };
+        setBuscando(true);
+        try {
+            const data = await apiFetch(`/inventario/items/?codigo_de_barras=${encodeURIComponent(limpio)}`);
+            const lista = Array.isArray(data)
+                ? data
+                : (data.items || data.articulos || data.results || []);
 
-    const handleSimularEscaneo = () => {
-        // Alterna entre los artículos de prueba para simular lecturas distintas
-        const indiceAleatorio = Math.floor(Math.random() * articulos.length);
-        buscarPorCodigo(articulos[indiceAleatorio].codigo_de_barras);
+            const encontrado = lista.find(
+                (art) =>
+                    String(art.codigo_de_barras ?? '').trim() === limpio ||
+                    String(art.sku ?? '').trim() === limpio
+            ) || lista[0];
+
+            if (encontrado) {
+                setArticuloDetectado(normalizarArticulo(encontrado));
+                setNoEncontrado(false);
+                setCantidad(1);
+            } else {
+                setArticuloDetectado(null);
+                setNoEncontrado(true);
+            }
+        } catch (err) {
+            setArticuloDetectado(null);
+            setNoEncontrado(false);
+            setErrorConsulta(err?.message || 'No se pudo consultar el artículo en el servidor.');
+        } finally {
+            setBuscando(false);
+        }
     };
 
     const handleBuscarSubmit = (e) => {
@@ -87,7 +76,7 @@ export default function Escaner() {
         buscarPorCodigo(codigoInput);
     };
 
-    const handleConfirmarMovimiento = (e) => {
+    const handleConfirmarMovimiento = async (e) => {
         e.preventDefault();
         if (!articuloDetectado) return;
 
@@ -109,39 +98,43 @@ export default function Escaner() {
 
         const nuevoEstado = nuevoStock > 0 ? 'en bodega' : 'sin stock';
 
-        // Payload listo para enviar a Django (crea movimiento en Cardex y actualiza Articulo)
         const payloadCardex = {
             id_articulo: articuloDetectado.id_articulo,
-            tipo: tipoMovimiento, // 'ingreso' | 'salida' (ENUM de Cardex)
+            sku: articuloDetectado.codigo_de_barras,
+            tipo: tipoMovimiento,
             cantidad: cantNum,
             stock_resultante: nuevoStock,
             costo_unitario: articuloDetectado.precio
         };
 
-        // Actualización visual en local
-        setArticulos((prev) =>
-            prev.map((art) =>
-                art.id_articulo === articuloDetectado.id_articulo
-                    ? { ...art, stock_actual: nuevoStock, estado: nuevoEstado }
-                    : art
-            )
-        );
-        setArticuloDetectado((prev) => ({
-            ...prev,
-            stock_actual: nuevoStock,
-            estado: nuevoEstado
-        }));
+        setConfirmando(true);
+        try {
+            await apiFetch('/cardex/', {
+                method: 'POST',
+                body: JSON.stringify(payloadCardex)
+            });
 
-        console.log('Movimiento de escáner listo para enviar al backend:', payloadCardex);
-        alert(
-            `${tipoMovimiento === 'ingreso' ? 'Ingreso' : 'Salida'} confirmado. Nuevo stock de "${articuloDetectado.nombre}": ${nuevoStock} ${articuloDetectado.unidad_de_medida}.`
-        );
+            setArticuloDetectado((prev) => ({
+                ...prev,
+                stock_actual: nuevoStock,
+                estado: nuevoEstado
+            }));
+
+            alert(
+                `${tipoMovimiento === 'ingreso' ? 'Ingreso' : 'Salida'} confirmado en el servidor. Nuevo stock de "${articuloDetectado.nombre}": ${nuevoStock} ${articuloDetectado.unidad_de_medida}.`
+            );
+        } catch (err) {
+            alert(`No se pudo registrar el movimiento: ${err?.message || 'Error en el servidor.'}`);
+        } finally {
+            setConfirmando(false);
+        }
     };
 
     const handleRechazar = () => {
         setCodigoInput('');
         setArticuloDetectado(null);
         setNoEncontrado(false);
+        setErrorConsulta('');
         setCantidad(1);
     };
 
@@ -168,33 +161,14 @@ export default function Escaner() {
                 <div className="bg-white p-4 p-md-5 border-top-0">
                     <div className="row justify-content-center">
                         <div className="col-12 col-md-9">
-                            {/* Simulación de Cámara del celular */}
-                            <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '15px', overflow: 'hidden' }}>
-                                <div className="bg-dark position-relative d-flex flex-column justify-content-center align-items-center" style={{ height: '210px' }}>
-                                    <div className="border border-success border-2 rounded position-relative" style={{ width: '200px', height: '115px' }}>
-                                        <div className="scan-line bg-success" style={{ height: '2px', width: '100%', position: 'absolute', top: '50%', boxShadow: '0 0 10px #198754' }}></div>
-                                    </div>
-                                    <span className="position-absolute bottom-0 mb-2 text-white opacity-50 small">Cámara Activa</span>
-                                </div>
-                                <div className="bg-light px-3 py-2 d-flex justify-content-between align-items-center border-top">
-                                    <span className="small text-muted">Compatible con lector USB o entrada manual</span>
-                                    <button
-                                        type="button"
-                                        onClick={handleSimularEscaneo}
-                                        className="btn btn-sm btn-outline-secondary rounded-pill px-3 fw-semibold"
-                                    >
-                                        <i className="bi bi-upc-scan me-1"></i> Simular Lectura
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Entrada manual / lector USB */}
+                            {/* Lector USB / entrada manual */}
                             <form onSubmit={handleBuscarSubmit} className="mb-4">
                                 <label className="form-label small text-muted fw-bold">Código de Barras (máx. 20 caracteres)</label>
                                 <div className="input-group shadow-sm">
                                     <input
                                         type="text"
                                         maxLength={20}
+                                        disabled={buscando || confirmando}
                                         value={codigoInput}
                                         onChange={(e) => setCodigoInput(e.target.value)}
                                         className="form-control bg-light border-light"
@@ -202,13 +176,20 @@ export default function Escaner() {
                                     />
                                     <button
                                         type="submit"
+                                        disabled={buscando || confirmando}
                                         className="btn text-white fw-semibold px-4"
                                         style={{ backgroundColor: '#2b3d52' }}
                                     >
-                                        Buscar
+                                        {buscando ? 'Buscando...' : 'Buscar'}
                                     </button>
                                 </div>
                             </form>
+
+                            {errorConsulta && (
+                                <div className="alert alert-danger shadow-sm" role="alert">
+                                    {errorConsulta}
+                                </div>
+                            )}
 
                             {/* Alerta si el código no existe */}
                             {noEncontrado && (
@@ -283,6 +264,7 @@ export default function Escaner() {
                                             <div className="col-12 col-md-6">
                                                 <label className="form-label small text-muted fw-bold">Tipo de Movimiento</label>
                                                 <select
+                                                    disabled={confirmando}
                                                     value={tipoMovimiento}
                                                     onChange={(e) => setTipoMovimiento(e.target.value)}
                                                     className="form-select bg-white shadow-sm border-light"
@@ -297,6 +279,7 @@ export default function Escaner() {
                                                     type="number"
                                                     min="1"
                                                     required
+                                                    disabled={confirmando}
                                                     value={cantidad}
                                                     onChange={(e) => setCantidad(e.target.value)}
                                                     className="form-control bg-white shadow-sm border-light"
@@ -307,13 +290,17 @@ export default function Escaner() {
                                         <div className="d-flex gap-3 mt-4">
                                             <button
                                                 type="submit"
+                                                disabled={confirmando}
                                                 className="btn w-50 fw-bold text-white shadow-sm py-2"
                                                 style={{ backgroundColor: '#2b3d52', borderRadius: '10px' }}
                                             >
-                                                Confirmar {tipoMovimiento === 'ingreso' ? 'Ingreso' : 'Salida'}
+                                                {confirmando
+                                                    ? 'Registrando...'
+                                                    : `Confirmar ${tipoMovimiento === 'ingreso' ? 'Ingreso' : 'Salida'}`}
                                             </button>
                                             <button
                                                 type="button"
+                                                disabled={confirmando}
                                                 onClick={handleRechazar}
                                                 className="btn btn-outline-danger w-50 fw-bold shadow-sm py-2"
                                                 style={{ borderRadius: '10px' }}

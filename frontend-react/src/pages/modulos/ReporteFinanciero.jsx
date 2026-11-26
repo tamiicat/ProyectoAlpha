@@ -1,61 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function ReporteFinanciero() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo alineados a Factura (egresos/compras) y Despachos/Ventas (ingresos)
-    // Luego vendrán de la API de Django: GET /reporte-financiero
-    const registrosMock = [
-        {
-            id_registro: 8012,
-            numero_documento: 'FAC-001452',
-            fecha: '2026-11-12',
-            concepto: 'Compra Insumos Climatización',
-            entidad: 'Distribuidora Frío Sur Ltda.',
-            tipo: 'egreso',
-            monto_neto: 1975555,
-            iva: 375355,
-            monto_bruto: 2350910
-        },
-        {
-            id_registro: 8013,
-            numero_documento: 'BOL-000891',
-            fecha: '2026-11-15',
-            concepto: 'Venta de Equipamiento Industrial',
-            entidad: 'Agroindustrial Ñuble Ltda.',
-            tipo: 'ingreso',
-            monto_neto: 5722680,
-            iva: 1087310,
-            monto_bruto: 6809990
-        },
-        {
-            id_registro: 8014,
-            numero_documento: 'FAC-001489',
-            fecha: '2026-11-18',
-            concepto: 'Reposición Válvulas y Repuestos',
-            entidad: 'Importadora Industrial Chile S.A.',
-            tipo: 'egreso',
-            monto_neto: 1486882,
-            iva: 282508,
-            monto_bruto: 1769390
-        },
-        {
-            id_registro: 8015,
-            numero_documento: 'BOL-000904',
-            fecha: '2026-11-19',
-            concepto: 'Servicio Instalación Cámara de Frío',
-            entidad: 'Frigorífico San Carlos S.A.',
-            tipo: 'ingreso',
-            monto_neto: 4739504,
-            iva: 900506,
-            monto_bruto: 5640010
-        }
-    ];
-
+    const [registros, setRegistros] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
     const [filtroTipo, setFiltroTipo] = useState('');
     const [busqueda, setBusqueda] = useState('');
     const [seleccionados, setSeleccionados] = useState([]);
+
+    const cargarRegistros = async () => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const data = await apiFetch('/reporte-financiero/');
+            const lista = Array.isArray(data)
+                ? data
+                : (data.registros || data.movimientos || data.results || []);
+
+            const normalizados = lista.map((reg, idx) => {
+                const tipoCrudo = String(reg.tipo || '').toLowerCase();
+                return {
+                    id_registro: reg.id_registro ?? reg.id ?? idx + 1,
+                    numero_documento: reg.numero_documento ?? reg.documento ?? reg.numero ?? '-',
+                    fecha: reg.fecha ?? reg.created_at ?? '',
+                    concepto: reg.concepto ?? reg.descripcion ?? '',
+                    entidad: reg.entidad ?? reg.proveedor ?? reg.cliente ?? '',
+                    tipo: tipoCrudo === 'ingreso' ? 'ingreso' : 'egreso',
+                    monto_neto: Number(reg.monto_neto ?? reg.neto ?? 0),
+                    iva: Number(reg.iva ?? 0),
+                    monto_bruto: Number(reg.monto_bruto ?? reg.total ?? reg.monto ?? 0)
+                };
+            });
+
+            setRegistros(normalizados);
+            setSeleccionados([]);
+        } catch (err) {
+            setRegistros([]);
+            setSeleccionados([]);
+            setErrorCarga(err?.message || 'No se pudo cargar el reporte financiero desde el servidor.');
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    useEffect(() => {
+        cargarRegistros();
+    }, []);
 
     const formatearCLP = (valor) => {
         return new Intl.NumberFormat('es-CL', {
@@ -65,7 +59,7 @@ export default function ReporteFinanciero() {
         }).format(valor);
     };
 
-    const registrosFiltrados = registrosMock.filter((reg) => {
+    const registrosFiltrados = registros.filter((reg) => {
         const coincideTipo = filtroTipo === '' || reg.tipo === filtroTipo;
         const termino = busqueda.toLowerCase();
         const coincideBusqueda =
@@ -107,7 +101,7 @@ export default function ReporteFinanciero() {
     };
 
     const obtenerRegistrosSeleccionados = () => {
-        return registrosMock.filter((r) => seleccionados.includes(r.id_registro));
+        return registros.filter((r) => seleccionados.includes(r.id_registro));
     };
 
     // Exportación real a CSV (compatible con Excel) solo con los registros marcados
@@ -178,6 +172,15 @@ export default function ReporteFinanciero() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4 d-print-none" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={cargarRegistros} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     {/* Tarjetas de Resumen */}
                     <div className="row g-4 mb-4">
                         <div className="col-12 col-md-4">
@@ -251,10 +254,18 @@ export default function ReporteFinanciero() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {registrosFiltrados.length === 0 ? (
+                                {cargando ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
-                                            No hay registros financieros para los filtros aplicados.
+                                            Cargando reporte financiero desde el servidor...
+                                        </td>
+                                    </tr>
+                                ) : registrosFiltrados.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" className="text-center py-4 text-muted">
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No hay registros financieros para los filtros aplicados.'}
                                         </td>
                                     </tr>
                                 ) : (

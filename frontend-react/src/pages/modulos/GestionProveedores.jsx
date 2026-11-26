@@ -1,34 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function GestionProveedores() {
     const navigate = useNavigate();
 
-    // Datos iniciales alineados a la tabla Proveedor (luego vendrán de Django: GET /proveedores)
-    const [proveedores, setProveedores] = useState([
-        {
-            id_proveedor: 1,
-            razon_social: 'Empresa Ñuble SpA',
-            rut: '76.123.456-K',
-            correo_electronico: 'contacto@empresanuble.cl',
-            telefono: '912345678',
-            direccion: 'Av. O’Higgins #450, Chillán',
-            activo: true
-        },
-        {
-            id_proveedor: 2,
-            razon_social: 'Distribuidora Frío Sur Ltda.',
-            rut: '77.654.321-8',
-            correo_electronico: 'ventas@friosur.cl',
-            telefono: '987654321',
-            direccion: 'Ruta 5 Sur Km 402, Chillán Viejo',
-            activo: true
-        }
-    ]);
-
+    const [proveedores, setProveedores] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
     const [busqueda, setBusqueda] = useState('');
     const [mostrarModal, setMostrarModal] = useState(false);
     const [modoEdicion, setModoEdicion] = useState(false);
+    const [guardando, setGuardando] = useState(false);
 
     const estadoInicial = {
         id_proveedor: null,
@@ -41,6 +24,35 @@ export default function GestionProveedores() {
     };
 
     const [formData, setFormData] = useState(estadoInicial);
+
+    const cargarProveedores = async () => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const data = await apiFetch('/proveedores/');
+            const lista = Array.isArray(data) ? data : (data.proveedores || []);
+            setProveedores(
+                lista.map((prov, idx) => ({
+                    id_proveedor: prov.id_proveedor ?? prov.id ?? idx + 1,
+                    razon_social: prov.razon_social ?? prov.nombre ?? '',
+                    rut: prov.rut ?? '',
+                    correo_electronico: prov.correo_electronico ?? prov.email ?? '',
+                    telefono: prov.telefono ?? '',
+                    direccion: prov.direccion ?? '',
+                    activo: prov.activo !== undefined ? Boolean(prov.activo) : true
+                }))
+            );
+        } catch (err) {
+            setProveedores([]);
+            setErrorCarga(err?.message || 'No se pudieron cargar los proveedores desde el servidor.');
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    useEffect(() => {
+        cargarProveedores();
+    }, []);
 
     const proveedoresFiltrados = proveedores.filter((prov) => {
         const termino = busqueda.toLowerCase();
@@ -72,7 +84,7 @@ export default function GestionProveedores() {
         }));
     };
 
-    const handleGuardar = (e) => {
+    const handleGuardar = async (e) => {
         e.preventDefault();
 
         const payload = {
@@ -84,50 +96,43 @@ export default function GestionProveedores() {
             activo: formData.activo
         };
 
-        if (modoEdicion) {
-            // PUT/PATCH /proveedores/:id en Django
-            setProveedores((prev) =>
-                prev.map((prov) =>
-                    prov.id_proveedor === formData.id_proveedor
-                        ? { id_proveedor: formData.id_proveedor, ...payload }
-                        : prov
-                )
-            );
-            console.log('Proveedor actualizado (simulación local):', {
-                id_proveedor: formData.id_proveedor,
-                ...payload
-            });
-        } else {
-            // POST /proveedores en Django
-            const nuevoId =
-                proveedores.length > 0
-                    ? Math.max(...proveedores.map((p) => p.id_proveedor)) + 1
-                    : 1;
-            setProveedores((prev) => [{ id_proveedor: nuevoId, ...payload }, ...prev]);
-            console.log('Nuevo proveedor listo para enviar al backend:', payload);
+        setGuardando(true);
+        try {
+            if (modoEdicion) {
+                await apiFetch(`/proveedores/${formData.id_proveedor}/`, {
+                    method: 'PUT',
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                await apiFetch('/proveedores/', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+            }
+            await cargarProveedores();
+            setMostrarModal(false);
+        } catch (err) {
+            alert(`No se pudo guardar el proveedor: ${err?.message || 'Error en el servidor.'}`);
+        } finally {
+            setGuardando(false);
         }
-
-        setMostrarModal(false);
     };
 
-    const handleDesactivar = (proveedor) => {
+    const handleDesactivar = async (proveedor) => {
         const confirmar = window.confirm(
             `¿Seguro que deseas desactivar al proveedor "${proveedor.razon_social}" (RUT: ${proveedor.rut})?`
         );
         if (!confirmar) return;
 
-        // Borrado lógico (activo: false) listo para la API
-        setProveedores((prev) =>
-            prev.map((prov) =>
-                prov.id_proveedor === proveedor.id_proveedor
-                    ? { ...prov, activo: false }
-                    : prov
-            )
-        );
-        console.log('Proveedor desactivado (simulación local):', {
-            id_proveedor: proveedor.id_proveedor,
-            activo: false
-        });
+        try {
+            await apiFetch(`/proveedores/${proveedor.id_proveedor}/`, {
+                method: 'PATCH',
+                body: JSON.stringify({ activo: false })
+            });
+            await cargarProveedores();
+        } catch (err) {
+            alert(`No se pudo desactivar el proveedor: ${err?.message || 'Error en el servidor.'}`);
+        }
     };
 
     return (
@@ -157,6 +162,15 @@ export default function GestionProveedores() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={cargarProveedores} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     {/* Buscador */}
                     <div className="row mb-4">
                         <div className="col-12 col-md-6">
@@ -185,10 +199,18 @@ export default function GestionProveedores() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {proveedoresFiltrados.length === 0 ? (
+                                {cargando ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
-                                            No se encontraron proveedores registrados.
+                                            Cargando proveedores desde el servidor...
+                                        </td>
+                                    </tr>
+                                ) : proveedoresFiltrados.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" className="text-center py-4 text-muted">
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No se encontraron proveedores registrados.'}
                                         </td>
                                     </tr>
                                 ) : (
@@ -346,6 +368,7 @@ export default function GestionProveedores() {
                                 <div className="modal-footer px-4 py-3 bg-light">
                                     <button
                                         type="button"
+                                        disabled={guardando}
                                         className="btn btn-outline-secondary rounded-pill px-4"
                                         onClick={() => setMostrarModal(false)}
                                     >
@@ -353,10 +376,11 @@ export default function GestionProveedores() {
                                     </button>
                                     <button
                                         type="submit"
+                                        disabled={guardando}
                                         className="btn text-white rounded-pill px-4 fw-semibold"
                                         style={{ backgroundColor: '#2b3d52' }}
                                     >
-                                        {modoEdicion ? 'Guardar Cambios' : 'Registrar Proveedor'}
+                                        {guardando ? 'Guardando...' : (modoEdicion ? 'Guardar Cambios' : 'Registrar Proveedor')}
                                     </button>
                                 </div>
                             </form>

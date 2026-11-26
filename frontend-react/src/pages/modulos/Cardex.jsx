@@ -6,74 +6,17 @@ export default function Cardex() {
     const navigate = useNavigate();
     const comprobanteRef = useRef(null);
 
-    // Datos de respaldo por si Django todavía no está encendido
-    const movimientosMock = [
-        {
-            id_cardex: 9021,
-            fecha: '2026-11-17 14:30',
-            id_articulo: 500,
-            articulo_nombre: 'Aire Acondicionado',
-            id_usuario: 2,
-            usuario_nombre: 'Carlos Soto (Bodeguero)',
-            tipo_movimiento: 'Ingreso',
-            referencia: 'Factura Doc #104',
-            cantidad: 15,
-            stock_resultante: 45,
-            costo_unitario: 350000,
-            observacion: 'Ingreso a Bodega Central tras recepción conforme de factura.'
-        },
-        {
-            id_cardex: 9022,
-            fecha: '2026-11-18 09:15',
-            id_articulo: 500,
-            articulo_nombre: 'Aire Acondicionado',
-            id_usuario: 3,
-            usuario_nombre: 'Luis Rojas (Técnico)',
-            tipo_movimiento: 'Salida',
-            referencia: 'Despacho Sol. #88',
-            cantidad: -2,
-            stock_resultante: 43,
-            costo_unitario: 350000,
-            observacion: 'Retiro asignado a obra de instalación en Agroindustrial Ñuble.'
-        },
-        {
-            id_cardex: 9023,
-            fecha: '2026-11-18 16:40',
-            id_articulo: 502,
-            articulo_nombre: 'Válvula de Presión 3/4',
-            id_usuario: 2,
-            usuario_nombre: 'Carlos Soto (Bodeguero)',
-            tipo_movimiento: 'Merma',
-            referencia: 'Merma #12',
-            cantidad: -1,
-            stock_resultante: 8,
-            costo_unitario: 24500,
-            observacion: 'Baja por daño detectado durante inspección en bodega.'
-        },
-        {
-            id_cardex: 9024,
-            fecha: '2026-11-19 10:05',
-            id_articulo: 500,
-            articulo_nombre: 'Aire Acondicionado',
-            id_usuario: 1,
-            usuario_nombre: 'Admin FYAG',
-            tipo_movimiento: 'Ajuste',
-            referencia: 'Registro directo',
-            cantidad: 1,
-            stock_resultante: 44,
-            costo_unitario: 350000,
-            observacion: 'Ajuste de inventario tras conteo físico mensual.'
-        }
-    ];
-
     const [movimientos, setMovimientos] = useState([]);
     const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
     const [busqueda, setBusqueda] = useState('');
     const [filtroTipo, setFiltroTipo] = useState('');
     const [movimientoSeleccionado, setMovimientoSeleccionado] = useState(null);
     const [modoImpresion, setModoImpresion] = useState('ficha'); // 'ficha' | 'historial'
 
     useEffect(() => {
+        setCargando(true);
+        setErrorCarga('');
         apiFetch('/cardex/')
             .then((data) => {
                 const lista = Array.isArray(data) ? data : (data.movimientos || []);
@@ -96,12 +39,14 @@ export default function Cardex() {
                     setMovimientoSeleccionado(normalizados[0]);
                 } else {
                     setMovimientos([]);
+                    setMovimientoSeleccionado(null);
                 }
             })
             .catch((err) => {
-                console.warn('No se pudo conectar con Django, usando datos de prueba:', err.message);
-                setMovimientos(movimientosMock);
-                setMovimientoSeleccionado(movimientosMock[0]);
+                console.error('Error al cargar Cardex desde el servidor:', err.message);
+                setMovimientos([]);
+                setMovimientoSeleccionado(null);
+                setErrorCarga(err?.message || 'No se pudieron cargar los movimientos del Cardex desde el servidor.');
             })
             .finally(() => {
                 setCargando(false);
@@ -220,6 +165,12 @@ export default function Cardex() {
                 </div>
 
                 <div className="bg-white p-3 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger mb-4 d-print-none" role="alert">
+                            {errorCarga}
+                        </div>
+                    )}
+
                     {/* Filtros con altura táctil >= 48px (ocultos al imprimir) */}
                     <div className="row g-3 mb-4 d-print-none">
                         <div className="col-12 col-md-8">
@@ -279,7 +230,9 @@ export default function Cardex() {
                                 ) : movimientosFiltrados.length === 0 ? (
                                     <tr>
                                         <td colSpan="9" className="text-center py-4 text-muted">
-                                            No se encontraron movimientos con los filtros aplicados.
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No se encontraron movimientos con los filtros aplicados.'}
                                         </td>
                                     </tr>
                                 ) : (
@@ -334,7 +287,9 @@ export default function Cardex() {
                             </div>
                         ) : movimientosFiltrados.length === 0 ? (
                             <div className="text-center py-4 text-muted border rounded-4 bg-light">
-                                No se encontraron movimientos con los filtros aplicados.
+                                {errorCarga
+                                    ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                    : 'No se encontraron movimientos con los filtros aplicados.'}
                             </div>
                         ) : (
                             <div className="d-flex flex-column gap-3">
