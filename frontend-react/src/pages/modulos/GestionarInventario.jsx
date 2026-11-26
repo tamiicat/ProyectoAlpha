@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function GestionarInventario() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo (luego vendrán de la API de Django: GET /categorias y GET /ubicaciones)
+    // Datos de respaldo mientras el backend expone GET /categorias y GET /ubicaciones
     const categoriasMock = [
         { id_categoria: 1, nombre: 'Climatización' },
         { id_categoria: 2, nombre: 'Refrigeración Industrial' },
@@ -30,6 +31,9 @@ export default function GestionarInventario() {
         activo: true
     });
 
+    const [guardando, setGuardando] = useState(false);
+    const [error, setError] = useState('');
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData((prev) => ({
@@ -38,12 +42,13 @@ export default function GestionarInventario() {
         }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setGuardando(true);
+        setError('');
 
         const stockNum = parseInt(formData.stock_actual, 10) || 0;
 
-        // Payload listo para enviar a la API de Django
         const payload = {
             id_categoria: Number(formData.id_categoria),
             id_ubicacion: Number(formData.id_ubicacion),
@@ -57,8 +62,19 @@ export default function GestionarInventario() {
             activo: formData.activo
         };
 
-        console.log('Artículo listo para enviar al backend:', payload);
-        alert('Artículo guardado correctamente (simulación local).');
+        try {
+            await apiFetch('/inventario/items/', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+
+            alert('Artículo guardado correctamente en el servidor.');
+            navigate('/inventario');
+        } catch (err) {
+            setError(err.message || 'No se pudo guardar el artículo en el servidor.');
+        } finally {
+            setGuardando(false);
+        }
     };
 
     return (
@@ -79,7 +95,13 @@ export default function GestionarInventario() {
                     </div>
                 </div>
 
-                <div className="bg-white p-5 border-top-0">
+                <div className="bg-white p-4 p-md-5 border-top-0">
+                    {error && (
+                        <div className="alert alert-danger rounded-3 mb-4">
+                            <strong>Error al guardar:</strong> {error}
+                        </div>
+                    )}
+
                     <form onSubmit={handleSubmit}>
                         <div className="row g-4 mb-4">
                             <div className="col-12 col-md-6">
@@ -96,7 +118,6 @@ export default function GestionarInventario() {
                                 />
                             </div>
 
-                            {/* Campo de Código de Barras con botón de escáner al lado */}
                             <div className="col-12 col-md-6">
                                 <label className="form-label fw-semibold text-muted small">Código de Barras</label>
                                 <div className="input-group input-group-lg shadow-sm">
@@ -211,8 +232,13 @@ export default function GestionarInventario() {
                         </div>
 
                         <div className="d-flex justify-content-end mt-5">
-                            <button type="submit" className="btn px-5 py-3 fw-bold text-white shadow-sm" style={{ backgroundColor: '#2b3d52', borderRadius: '12px' }}>
-                                Guardar Artículo
+                            <button
+                                type="submit"
+                                disabled={guardando}
+                                className="btn px-5 py-3 fw-bold text-white shadow-sm"
+                                style={{ backgroundColor: '#2b3d52', borderRadius: '12px' }}
+                            >
+                                {guardando ? 'Guardando...' : 'Guardar Artículo'}
                             </button>
                         </div>
                     </form>

@@ -35,3 +35,19 @@
 .scan-line {
   animation: scan 2s infinite linear;
 }
+
+/* Adapta los módulos existentes dentro del DashboardLayout */
+.fyag-main-content > .container,
+.fyag-main-content > .container-xl,
+.fyag-main-content > .container-fluid {
+  max-width: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.fyag-main-content .shadow-lg {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06) !important;
+  border-radius: 16px !important;
+}
