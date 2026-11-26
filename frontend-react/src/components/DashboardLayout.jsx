@@ -148,18 +148,33 @@ export default function DashboardLayout() {
     }
   }, []);
 
-  const rolRaw = (sesion?.rol || sesion?.role || 'admin').toLowerCase();
+  const rolRaw = (
+    sessionStorage.getItem('rolVistaFYAG') ||
+    sesion?.rol ||
+    sesion?.role ||
+    'admin'
+  ).toLowerCase();
   const rolKey = CONFIG_ROLES[rolRaw] ? rolRaw : 'admin';
   const tema = CONFIG_ROLES[rolKey];
 
   const handleCerrarSesion = () => {
     localStorage.removeItem('usuarioFYAG');
     sessionStorage.removeItem('usuarioFYAG');
+    sessionStorage.removeItem('rolVistaFYAG');
     navigate('/');
   };
 
   return (
-    <div className="d-flex" style={{ minHeight: '100vh', backgroundColor: '#f4f7fa' }}>
+    <div
+      className="d-flex"
+      style={{
+        minHeight: '100vh',
+        backgroundColor: '#f4f7fa',
+        '--fyag-navy': tema.colorPrimario,
+        '--fyag-navy-hover': tema.colorPrimario,
+        '--fyag-accent': tema.colorAcento,
+      }}
+    >
       {/* SIDEBAR */}
       <aside
         className={`d-flex flex-column text-white flex-shrink-0 ${

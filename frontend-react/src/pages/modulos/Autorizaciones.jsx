@@ -1,57 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function Autorizaciones() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo alineados a la tabla Autorizacion (luego vendrán de Django: GET /autorizaciones)
-    const [autorizaciones, setAutorizaciones] = useState([
-        {
-            id_autorizacion: 1,
-            id_usuario_solicitante: 2,
-            solicitante_nombre: 'Carlos Soto (Bodeguero)',
-            id_usuario_autorizador: null,
-            autorizador_nombre: null,
-            modulo: 'Articulo',
-            id_registro: 501,
-            accion: 'eliminacion',
-            motivo: 'Artículo duplicado al ingresar factura #902.',
-            fecha_solicitud: '2026-11-19 10:15',
-            fecha_respuesta: null,
-            estado: 'pendiente',
-            observaciones: ''
-        },
-        {
-            id_autorizacion: 2,
-            id_usuario_solicitante: 3,
-            solicitante_nombre: 'Luis Rojas (Técnico)',
-            id_usuario_autorizador: null,
-            autorizador_nombre: null,
-            modulo: 'Obra',
-            id_registro: 201,
-            accion: 'modificacion',
-            motivo: 'Extensión de fecha de término por retraso en llegada de repuestos.',
-            fecha_solicitud: '2026-11-19 14:40',
-            fecha_respuesta: null,
-            estado: 'pendiente',
-            observaciones: ''
-        },
-        {
-            id_autorizacion: 3,
-            id_usuario_solicitante: 4,
-            solicitante_nombre: 'Finanzas FYAG',
-            id_usuario_autorizador: 1,
-            autorizador_nombre: 'Pedro Aedo (Admin)',
-            modulo: 'Factura',
-            id_registro: 901,
-            accion: 'modificacion',
-            motivo: 'Corrección de monto neto por nota de crédito del proveedor.',
-            fecha_solicitud: '2026-11-17 09:30',
-            fecha_respuesta: '2026-11-17 11:05',
-            estado: 'aprobada',
-            observaciones: 'Verificado con documento tributario adjunto.'
-        }
-    ]);
+    const [autorizaciones, setAutorizaciones] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
+    const [guardando, setGuardando] = useState(false);
+    const [errorModal, setErrorModal] = useState('');
 
     const [busqueda, setBusqueda] = useState('');
     const [filtroEstado, setFiltroEstado] = useState('');
@@ -59,11 +17,39 @@ export default function Autorizaciones() {
     const [accionModal, setAccionModal] = useState(''); // 'aprobada' | 'rechazada'
     const [observacionesRespuesta, setObservacionesRespuesta] = useState('');
 
-    const obtenerFechaHoraActual = () => {
-        const ahora = new Date();
-        const offset = ahora.getTimezoneOffset() * 60000;
-        return new Date(ahora - offset).toISOString().slice(0, 16).replace('T', ' ');
+    const cargarAutorizaciones = async () => {
+        setCargando(true);
+        setErrorCarga('');
+        try {
+            const data = await apiFetch('/autorizaciones/');
+            const lista = Array.isArray(data) ? data : (data.autorizaciones || data.results || []);
+            const normalizadas = lista.map((item, idx) => ({
+                id_autorizacion: item.id_autorizacion ?? item.id ?? idx + 1,
+                id_usuario_solicitante: item.id_usuario_solicitante ?? item.id_solicitante ?? null,
+                solicitante_nombre: item.solicitante_nombre ?? item.solicitante ?? 'Usuario FYAG',
+                id_usuario_autorizador: item.id_usuario_autorizador ?? item.id_autorizador ?? null,
+                autorizador_nombre: item.autorizador_nombre ?? item.autorizador ?? null,
+                modulo: item.modulo ?? item.tabla_afectada ?? 'General',
+                id_registro: item.id_registro ?? item.id_movimiento ?? '-',
+                accion: (item.accion ?? 'modificacion').toLowerCase(),
+                motivo: item.motivo ?? item.justificacion ?? '',
+                fecha_solicitud: item.fecha_solicitud ?? item.created_at ?? '',
+                fecha_respuesta: item.fecha_respuesta ?? item.fecha_resolucion ?? null,
+                estado: (item.estado ?? 'pendiente').toLowerCase(),
+                observaciones: item.observaciones ?? ''
+            }));
+            setAutorizaciones(normalizadas);
+        } catch (err) {
+            setAutorizaciones([]);
+            setErrorCarga(err?.message || 'No se pudieron cargar las autorizaciones desde el servidor.');
+        } finally {
+            setCargando(false);
+        }
     };
+
+    useEffect(() => {
+        cargarAutorizaciones();
+    }, []);
 
     const obtenerBadgeEstado = (estado) => {
         const estilos = {
@@ -76,7 +62,7 @@ export default function Autorizaciones() {
     };
 
     const obtenerBadgeAccion = (accion) => {
-        if (accion === 'eliminacion') {
+        if (accion === 'eliminacion' || accion === 'eliminar') {
             return <span className="badge bg-danger bg-opacity-10 text-danger border border-danger">Eliminación</span>;
         }
         return <span className="badge bg-info bg-opacity-10 text-info border border-info">Modificación</span>;
@@ -98,41 +84,36 @@ export default function Autorizaciones() {
         setSolicitudActiva(solicitud);
         setAccionModal(decision);
         setObservacionesRespuesta('');
+        setErrorModal('');
     };
 
-    const handleConfirmarRespuesta = (e) => {
+    const handleConfirmarRespuesta = async (e) => {
         e.preventDefault();
         if (!solicitudActiva) return;
 
-        const fechaRespuesta = obtenerFechaHoraActual();
+        setGuardando(true);
+        setErrorModal('');
 
-        // Payload listo para enviar a Django (PATCH /autorizaciones/:id)
-        // id_usuario_autorizador lo asigna el backend desde la sesión autenticada
         const payload = {
-            id_autorizacion: solicitudActiva.id_autorizacion,
             estado: accionModal,
-            fecha_respuesta: fechaRespuesta,
             observaciones: observacionesRespuesta.trim()
         };
 
-        setAutorizaciones((prev) =>
-            prev.map((item) =>
-                item.id_autorizacion === solicitudActiva.id_autorizacion
-                    ? {
-                          ...item,
-                          estado: accionModal,
-                          fecha_respuesta: fechaRespuesta,
-                          autorizador_nombre: 'Usuario Actual',
-                          observaciones: payload.observaciones
-                      }
-                    : item
-            )
-        );
+        try {
+            await apiFetch(`/autorizaciones/${solicitudActiva.id_autorizacion}/`, {
+                method: 'PATCH',
+                body: JSON.stringify(payload)
+            });
 
-        console.log('Respuesta de autorización lista para el backend:', payload);
-        setSolicitudActiva(null);
-        setAccionModal('');
-        setObservacionesRespuesta('');
+            setSolicitudActiva(null);
+            setAccionModal('');
+            setObservacionesRespuesta('');
+            await cargarAutorizaciones();
+        } catch (err) {
+            setErrorModal(err?.message || 'No se pudo registrar la respuesta en el servidor.');
+        } finally {
+            setGuardando(false);
+        }
     };
 
     return (
@@ -154,6 +135,15 @@ export default function Autorizaciones() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4" role="alert">
+                            <span>{errorCarga}</span>
+                            <button type="button" onClick={cargarAutorizaciones} className="btn btn-sm btn-outline-danger ms-3">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+
                     {/* Filtros */}
                     <div className="row g-3 mb-4">
                         <div className="col-12 col-md-8">
@@ -194,10 +184,18 @@ export default function Autorizaciones() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {autorizacionesFiltradas.length === 0 ? (
+                                {cargando ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
-                                            No se encontraron solicitudes de autorización.
+                                            Cargando autorizaciones desde el servidor...
+                                        </td>
+                                    </tr>
+                                ) : autorizacionesFiltradas.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" className="text-center py-4 text-muted">
+                                            {errorCarga
+                                                ? 'No hay datos disponibles por un error de conexión o autenticación.'
+                                                : 'No se encontraron solicitudes de autorización.'}
                                         </td>
                                     </tr>
                                 ) : (
@@ -263,7 +261,7 @@ export default function Autorizaciones() {
             {/* Modal para confirmar Aprobación o Rechazo */}
             {solicitudActiva && (
                 <div className="modal d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-                    <div className="modal-dialog modal-dialog-centered">
+                    <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
                         <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '20px', overflow: 'hidden' }}>
                             <div
                                 className="modal-header px-4 py-3 text-white"
@@ -276,16 +274,25 @@ export default function Autorizaciones() {
                                     type="button"
                                     className="btn-close btn-close-white"
                                     onClick={() => setSolicitudActiva(null)}
+                                    disabled={guardando}
                                 ></button>
                             </div>
                             <form onSubmit={handleConfirmarRespuesta}>
                                 <div className="modal-body p-4">
+                                    {errorModal && (
+                                        <div className="alert alert-danger py-2 small mb-3" role="alert">
+                                            {errorModal}
+                                        </div>
+                                    )}
                                     <p className="small mb-2">
                                         <strong>Solicitante:</strong> {solicitudActiva.solicitante_nombre}
                                     </p>
                                     <p className="small mb-3">
-                                        <strong>Solicitud:</strong> {solicitudActiva.accion === 'eliminacion' ? 'Eliminación' : 'Modificación'} en{' '}
-                                        <strong>{solicitudActiva.modulo} #{solicitudActiva.id_registro}</strong>
+                                        <strong>Solicitud:</strong>{' '}
+                                        {solicitudActiva.accion === 'eliminacion' || solicitudActiva.accion === 'eliminar'
+                                            ? 'Eliminación'
+                                            : 'Modificación'}{' '}
+                                        en <strong>{solicitudActiva.modulo} #{solicitudActiva.id_registro}</strong>
                                     </p>
                                     <div className="mb-2">
                                         <label className="form-label fw-semibold text-muted small">
@@ -311,16 +318,20 @@ export default function Autorizaciones() {
                                         type="button"
                                         className="btn btn-outline-secondary rounded-pill px-4"
                                         onClick={() => setSolicitudActiva(null)}
+                                        disabled={guardando}
                                     >
                                         Cancelar
                                     </button>
                                     <button
                                         type="submit"
+                                        disabled={guardando}
                                         className={`btn rounded-pill px-4 fw-semibold text-white ${
                                             accionModal === 'aprobada' ? 'btn-success' : 'btn-danger'
                                         }`}
                                     >
-                                        Confirmar {accionModal === 'aprobada' ? 'Aprobación' : 'Rechazo'}
+                                        {guardando
+                                            ? 'Guardando...'
+                                            : `Confirmar ${accionModal === 'aprobada' ? 'Aprobación' : 'Rechazo'}`}
                                     </button>
                                 </div>
                             </form>

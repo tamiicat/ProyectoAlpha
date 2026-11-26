@@ -29,6 +29,8 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn:hover:not(:disabled) {
@@ -69,6 +71,7 @@ body {
 
 .fyag-main-content .btn.text-white:hover:not(:disabled) {
   background-color: var(--fyag-navy-hover) !important;
+  filter: brightness(1.15);
   box-shadow: 0 6px 16px rgba(27, 46, 66, 0.28) !important;
 }
 
@@ -185,4 +188,64 @@ body {
 .fyag-main-content .shadow-lg {
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06) !important;
   border-radius: 16px !important;
+}
+
+/* Sincroniza los headers de los módulos con el color del rol activo */
+.fyag-main-content .shadow-lg > div:first-child {
+  background-color: var(--fyag-navy) !important;
+}
+
+/* =========================================================
+   ADAPTACIÓN MÓVIL (Pantallas bajo 768px)
+   ========================================================= */
+
+@media (max-width: 767.98px) {
+  .fyag-main-content .shadow-lg > div:first-child {
+    padding: 1.25rem !important;
+    gap: 0.9rem;
+    align-items: flex-start !important;
+  }
+
+  .fyag-main-content .shadow-lg > div:first-child img {
+    height: 44px !important;
+  }
+
+  .fyag-main-content .shadow-lg > div:first-child .ms-4 {
+    margin-left: 0.75rem !important;
+  }
+
+  .fyag-main-content .shadow-lg > div:first-child h3 {
+    font-size: 1.25rem;
+  }
+
+  .fyag-main-content .shadow-lg > div:first-child > div:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .fyag-main-content .shadow-lg > div:nth-child(2) {
+    padding: 1.15rem !important;
+  }
+
+  .fyag-main-content .btn {
+    padding: 0.5rem 0.9rem !important;
+    font-size: 0.85rem;
+  }
+
+  .fyag-main-content .table th,
+  .fyag-main-content .table td {
+    padding: 0.6rem 0.65rem !important;
+    font-size: 0.82rem;
+  }
+
+  .fyag-main-content .table-responsive {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .fyag-main-content .table td[colspan] {
+    text-align: left !important;
+    white-space: normal;
+  }
 }
