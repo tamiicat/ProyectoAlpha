@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../services/api';
 
 export default function CrearCuenta() {
     const navigate = useNavigate();
@@ -17,6 +18,9 @@ export default function CrearCuenta() {
         activo: true
     });
 
+    const [guardando, setGuardando] = useState(false);
+    const [error, setError] = useState('');
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData((prev) => ({
@@ -25,15 +29,17 @@ export default function CrearCuenta() {
         }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
 
         if (formData.password !== formData.confirmar_password) {
-            alert('Las contraseñas no coinciden.');
+            setError('Las contraseñas no coinciden.');
             return;
         }
 
-        // Payload listo para enviar a la API de Django
+        setGuardando(true);
+
         const payload = {
             id_rol: Number(formData.id_rol),
             nombres: formData.nombres.trim(),
@@ -46,8 +52,20 @@ export default function CrearCuenta() {
             activo: formData.activo
         };
 
-        console.log('Datos listos para enviar al backend:', payload);
-        alert('Usuario registrado correctamente (simulación local).');
+        try {
+            // Verifica que esta ruta coincida con la que usas en GestionUsuarios.jsx
+            await apiFetch('/usuarios/', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+
+            alert('Usuario registrado correctamente en el servidor.');
+            navigate('/gestion-usuarios');
+        } catch (err) {
+            setError(err.message || 'No se pudo registrar el usuario.');
+        } finally {
+            setGuardando(false);
+        }
     };
 
     return (
@@ -68,7 +86,13 @@ export default function CrearCuenta() {
                     </div>
                 </div>
 
-                <div className="bg-white p-5 border-top-0">
+                <div className="bg-white p-4 p-md-5 border-top-0">
+                    {error && (
+                        <div className="alert alert-danger rounded-3 mb-4">
+                            <strong>Error:</strong> {error}
+                        </div>
+                    )}
+
                     <form onSubmit={handleSubmit}>
                         <div className="row g-4 mb-4">
                             <div className="col-12 col-md-6">
@@ -160,10 +184,10 @@ export default function CrearCuenta() {
                                 >
                                     <option value="">Seleccione un rol...</option>
                                     <option value="1">Administrador</option>
-                                    <option value="2">Bodeguero</option>
-                                    <option value="3">Técnico</option>
-                                    <option value="4">Finanzas</option>
-                                    <option value="5">Supervisor</option>
+                                    <option value="2">Finanzas</option>
+                                    <option value="3">Bodeguero</option>
+                                    <option value="4">Técnico</option>
+                                    <option value="5">Supervisor de Obras</option>
                                 </select>
                             </div>
                             <div className="col-12 col-md-6">
@@ -193,8 +217,13 @@ export default function CrearCuenta() {
                         </div>
 
                         <div className="d-flex justify-content-end mt-4">
-                            <button type="submit" className="btn px-5 py-3 fw-bold text-white shadow-sm" style={{ backgroundColor: '#2b3d52', borderRadius: '12px' }}>
-                                Registrar Usuario
+                            <button
+                                type="submit"
+                                disabled={guardando}
+                                className="btn px-5 py-3 fw-bold text-white shadow-sm"
+                                style={{ backgroundColor: '#2b3d52', borderRadius: '12px' }}
+                            >
+                                {guardando ? 'Registrando...' : 'Registrar Usuario'}
                             </button>
                         </div>
                     </form>
