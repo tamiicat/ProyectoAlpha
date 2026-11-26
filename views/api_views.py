@@ -208,6 +208,72 @@ def api_buscar_inventario(request: Any) -> JsonResponse:
     return JsonResponse({"resultados": resultados, "total": len(resultados)}, status=200)
 
 
+@require_rbac("inventario_bodega", "R")
+def api_categorias(request: Any) -> JsonResponse:
+    """GET /api/v1/categorias/ -> lista categorías activas."""
+    if request.method != "GET":
+        return JsonResponse({"error": "Método no permitido."}, status=405)
+
+    categorias: list[dict[str, Any]] = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id_categoria, nombre, activo
+                FROM categoria
+                WHERE activo = TRUE
+                ORDER BY nombre ASC;
+                """
+            )
+            for row in cursor.fetchall():
+                categorias.append(
+                    {
+                        "id": row[0],
+                        "id_categoria": row[0],
+                        "nombre": row[1],
+                        "activo": row[2],
+                    }
+                )
+    except Exception:
+        categorias = []
+
+    return JsonResponse({"categorias": categorias, "total": len(categorias)}, status=200)
+
+
+@require_rbac("inventario_bodega", "R")
+def api_ubicaciones(request: Any) -> JsonResponse:
+    """GET /api/v1/ubicaciones/ -> lista ubicaciones activas."""
+    if request.method != "GET":
+        return JsonResponse({"error": "Método no permitido."}, status=405)
+
+    ubicaciones: list[dict[str, Any]] = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id_ubicacion, bodega, detalle, activo
+                FROM ubicacion
+                WHERE activo = TRUE
+                ORDER BY bodega ASC, detalle ASC;
+                """
+            )
+            for row in cursor.fetchall():
+                ubicaciones.append(
+                    {
+                        "id": row[0],
+                        "id_ubicacion": row[0],
+                        "bodega": row[1],
+                        "detalle": row[2],
+                        "nombre": f"{row[1]} - {row[2]}" if row[2] else row[1],
+                        "activo": row[3],
+                    }
+                )
+    except Exception:
+        ubicaciones = []
+
+    return JsonResponse({"ubicaciones": ubicaciones, "total": len(ubicaciones)}, status=200)
+
+
 @csrf_exempt
 @require_rbac("inventario_bodega", "C")
 def api_orquestar_movimiento(request: Any) -> JsonResponse:
