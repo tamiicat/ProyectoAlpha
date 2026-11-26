@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../services/api';
+import TourAyuda from '../../components/TourAyuda';
 
 // Configuración visual y de módulos por rol
 const CONFIG_ROLES = {
@@ -160,7 +161,6 @@ export default function Dashboard({ rol = 'admin' }) {
     setLoading(true);
     setError('');
     try {
-      // Endpoint real verificado en Inventario.jsx
       const data = await apiFetch('/inventario/items/');
       const lista = Array.isArray(data) ? data : data?.items || data?.results || [];
       setItems(lista);
@@ -253,6 +253,7 @@ export default function Dashboard({ rol = 'admin' }) {
 
       {/* SIDEBAR */}
       <aside
+        data-tour="sidebar"
         className={`fyag-sidebar d-flex flex-column text-white flex-shrink-0 ${
           menuAbierto ? 'd-flex' : 'd-none d-lg-flex'
         }`}
@@ -362,7 +363,7 @@ export default function Dashboard({ rol = 'admin' }) {
             </div>
           </div>
 
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-2" data-tour="header-acciones">
             <span
               className={`badge rounded-pill px-3 py-2 ${
                 loading
@@ -397,7 +398,7 @@ export default function Dashboard({ rol = 'admin' }) {
           )}
 
           {/* Tarjetas KPI */}
-          <div className="row g-3 mb-4">
+          <div className="row g-3 mb-4" data-tour="kpis">
             <div className="col-12 col-sm-6 col-xl-3">
               <div
                 className="card border-0 shadow-sm h-100 rounded-4"
@@ -475,7 +476,7 @@ export default function Dashboard({ rol = 'admin' }) {
 
           {/* Alertas + Distribución por Ubicación */}
           <div className="row g-4">
-            <div className="col-12 col-xl-8">
+            <div className="col-12 col-xl-8" data-tour="alertas-stock">
               <div className="card border-0 shadow-sm rounded-4 h-100">
                 <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center rounded-top-4">
                   <div>
@@ -548,7 +549,7 @@ export default function Dashboard({ rol = 'admin' }) {
               </div>
             </div>
 
-            <div className="col-12 col-xl-4">
+            <div className="col-12 col-xl-4" data-tour="stock-ubicacion">
               <div className="card border-0 shadow-sm rounded-4 h-100">
                 <div className="card-header bg-white border-bottom py-3 rounded-top-4">
                   <h5 className="mb-0 fw-bold" style={{ color: tema.colorPrimario }}>
@@ -590,6 +591,9 @@ export default function Dashboard({ rol = 'admin' }) {
           </div>
         </main>
       </div>
+
+      {/* Guía y tutorial interactivo */}
+      <TourAyuda rol={rol} />
     </div>
   );
 }

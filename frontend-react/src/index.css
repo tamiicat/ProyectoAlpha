@@ -268,3 +268,45 @@ body {
     z-index: 1040;
   }
 }
+
+/* =========================================================
+   WIDGET DE ACCESIBILIDAD Y AYUDA INTERACTIVA
+   ========================================================= */
+
+.fyag-a11y-widget {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1080;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.fyag-help-widget {
+  position: fixed;
+  right: 23px;
+  bottom: 84px;
+  z-index: 1080;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+html.fyag-alto-contraste {
+  filter: contrast(1.35);
+}
+
+html.fyag-escala-grises {
+  filter: grayscale(1);
+}
+
+html.fyag-alto-contraste.fyag-escala-grises {
+  filter: contrast(1.35) grayscale(1);
+}
+
+html.fyag-resaltar-enlaces a,
+html.fyag-resaltar-enlaces button {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 2px;
+}

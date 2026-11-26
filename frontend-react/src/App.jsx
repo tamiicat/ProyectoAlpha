@@ -23,6 +23,7 @@ import GestionObras from './pages/modulos/GestionObras';
 import ModuloCompras from './pages/modulos/ModuloCompras';
 import GestionClientes from './pages/modulos/GestionClientes';
 import Autorizaciones from './pages/modulos/Autorizaciones';
+import Accesibilidad from './components/Accesibilidad';
 
 export default function App() {
   return (
@@ -65,6 +66,9 @@ export default function App() {
         {/* Ruta comodín: redirige al Login si la URL no existe */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      {/* Botón flotante de accesibilidad en toda la app */}
+      <Accesibilidad />
     </BrowserRouter>
   );
 }
