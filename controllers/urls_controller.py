@@ -10,6 +10,7 @@ from views.api_views import (
     api_crear_inventario,
     api_health,
     api_listar_inventario,
+    api_mermas,
     api_orquestar_movimiento,
     api_sincronizar_offline,
     api_solicitudes,
@@ -31,6 +32,8 @@ urlpatterns = [
     path("api/v1/ubicaciones/", api_ubicaciones, name="api_ubicaciones"),
     path("api/v1/inventario/categorias/", api_categorias, name="inventario_categorias"),
     path("api/v1/inventario/ubicaciones/", api_ubicaciones, name="inventario_ubicaciones"),
+    path("api/v1/mermas/", api_mermas, name="api_mermas"),
+    path("api/v1/inventario/mermas/", api_mermas, name="inventario_mermas"),
     path("api/v1/movimientos/orquestar/", api_orquestar_movimiento, name="movimientos_orquestar"),
     path("api/v1/sync/batch/", api_sincronizar_offline, name="sync_batch"),
     # Nuevas rutas para Usuarios, Cardex y Solicitudes

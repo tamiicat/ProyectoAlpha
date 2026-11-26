@@ -274,6 +274,58 @@ def api_ubicaciones(request: Any) -> JsonResponse:
     return JsonResponse({"ubicaciones": ubicaciones, "total": len(ubicaciones)}, status=200)
 
 
+@require_rbac("inventario_bodega", "R")
+def api_mermas(request: Any) -> JsonResponse:
+    """GET /api/v1/mermas/ -> lista registros de mermas en bodega."""
+    if request.method != "GET":
+        return JsonResponse({"error": "Método no permitido."}, status=405)
+
+    mermas: list[dict[str, Any]] = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    m.id_merma,
+                    m.fecha,
+                    COALESCE(a.nombre, CONCAT('Artículo #', m.id_articulo::text)) AS articulo,
+                    COALESCE(
+                        NULLIF(TRIM(CONCAT(COALESCE(u.nombres, ''), ' ', COALESCE(u.apellidos, ''))), ''),
+                        u.usuario,
+                        'Sistema'
+                    ) AS responsable,
+                    m.cantidad,
+                    m.motivo,
+                    m.justificacion
+                FROM merma m
+                LEFT JOIN articulo a ON a.id_articulo = m.id_articulo
+                LEFT JOIN usuario u ON u.id_usuario = m.id_usuario
+                ORDER BY m.fecha DESC, m.id_merma DESC;
+                """
+            )
+            for row in cursor.fetchall():
+                fecha_str = (
+                    row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1] or "")
+                )
+                mermas.append(
+                    {
+                        "id": row[0],
+                        "id_merma": row[0],
+                        "fecha": fecha_str,
+                        "fecha_hora": fecha_str,
+                        "articulo": row[2],
+                        "responsable": row[3],
+                        "cantidad": row[4],
+                        "motivo": row[5],
+                        "justificacion": row[6],
+                    }
+                )
+    except Exception:
+        mermas = []
+
+    return JsonResponse({"mermas": mermas, "total": len(mermas)}, status=200)
+
+
 @csrf_exempt
 @require_rbac("inventario_bodega", "C")
 def api_orquestar_movimiento(request: Any) -> JsonResponse:
