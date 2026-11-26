@@ -48,12 +48,22 @@ export default function GestionarInventario() {
         setError('');
 
         const stockNum = parseInt(formData.stock_actual, 10) || 0;
+        const codigoLimpio = formData.codigo_de_barras.trim();
+        const ubicacionObj = ubicacionesMock.find(
+            (ub) => String(ub.id_ubicacion) === String(formData.id_ubicacion)
+        );
+        const ubicacionTexto = ubicacionObj
+            ? `${ubicacionObj.bodega} - ${ubicacionObj.detalle}`
+            : 'Bodega Central';
 
         const payload = {
+            sku: codigoLimpio,
+            nombre: formData.nombre.trim(),
+            stock: stockNum,
+            ubicacion: ubicacionTexto,
             id_categoria: Number(formData.id_categoria),
             id_ubicacion: Number(formData.id_ubicacion),
-            codigo_de_barras: formData.codigo_de_barras.trim(),
-            nombre: formData.nombre.trim(),
+            codigo_de_barras: codigoLimpio,
             stock_actual: stockNum,
             stock_critico: parseInt(formData.stock_critico, 10) || 0,
             unidad_de_medida: formData.unidad_de_medida.trim(),
@@ -63,7 +73,7 @@ export default function GestionarInventario() {
         };
 
         try {
-            await apiFetch('/inventario/items/', {
+            await apiFetch('/inventario/items/crear/', {
                 method: 'POST',
                 body: JSON.stringify(payload)
             });

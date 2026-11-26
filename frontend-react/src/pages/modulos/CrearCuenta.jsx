@@ -2,6 +2,14 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../services/api';
 
+const MAPA_ROLES = {
+    1: 'ADMIN_TI',
+    2: 'FINANZAS',
+    3: 'BODEGUERO',
+    4: 'TECNICO',
+    5: 'SUPERVISOR_OBRAS'
+};
+
 export default function CrearCuenta() {
     const navigate = useNavigate();
 
@@ -40,12 +48,17 @@ export default function CrearCuenta() {
 
         setGuardando(true);
 
+        const correoLimpio = formData.correo_electronico.trim();
+        const rolCodigo = MAPA_ROLES[Number(formData.id_rol)] || 'ADMIN_TI';
+
         const payload = {
+            email: correoLimpio,
+            correo_electronico: correoLimpio,
+            rol: rolCodigo,
             id_rol: Number(formData.id_rol),
             nombres: formData.nombres.trim(),
             apellidos: formData.apellidos.trim(),
             rut: formData.rut.trim(),
-            correo_electronico: formData.correo_electronico.trim(),
             telefono: formData.telefono.trim(),
             usuario: formData.usuario.trim(),
             password: formData.password,
