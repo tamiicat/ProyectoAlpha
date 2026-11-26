@@ -1,0 +1,53 @@
+/* Eliminamos márgenes por defecto del navegador */
+* { 
+  margin: 0; 
+  padding: 0; 
+  box-sizing: border-box; 
+}
+
+/* Colores y diseño de los paneles originales (Forzados sobre Bootstrap) */
+.panel-card { 
+  border-radius: 15px !important; 
+  border: none !important; 
+}
+
+.btn-menu { 
+  background-color: #2b3d52 !important; 
+  color: white !important; 
+  border-radius: 10px !important; 
+  border: none !important; 
+  font-weight: 500 !important;
+  transition: background-color 0.2s ease-in-out; 
+}
+
+.btn-menu:hover { 
+  background-color: #1a2533 !important; 
+  color: white !important; 
+}
+
+/* Animación del módulo Escáner */
+@keyframes scan {
+  0% { top: 0; }
+  50% { top: 100%; }
+  100% { top: 0; }
+}
+
+.scan-line {
+  animation: scan 2s infinite linear;
+}
+
+/* Adapta los módulos existentes dentro del DashboardLayout */
+.fyag-main-content > .container,
+.fyag-main-content > .container-xl,
+.fyag-main-content > .container-fluid {
+  max-width: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.fyag-main-content .shadow-lg {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06) !important;
+  border-radius: 16px !important;
+}
