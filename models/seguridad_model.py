@@ -1,4 +1,4 @@
-"""Capa Modelo (MVC): Seguridad transversal, JWT, cifrado AES-256 y cliente Auth IAM."""
+"""Capa Modelo (MVC): Seguridad transversal, JWT, cifrado AES-256, IAM y autorizaciones."""
 
 import base64
 import hashlib
@@ -8,11 +8,13 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from typing import Any, Dict
+from datetime import date
+from typing import Any, Dict, List, Optional
 
 import bcrypt
 import jwt
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from django.db import connection, models, transaction
 
 
 def hash_password(plain_password: str) -> str:
@@ -185,3 +187,228 @@ class AuthServiceClient:
             "/auth/revoke-device",
             {"user_id": user_id, "device_id": device_id},
         )
+
+
+# ==============================================================================
+# MODELOS Y REGLAS DE SEGURIDAD / AUTORIZACIÓN (MODELO RELACIONAL PROYECTO ALPHA)
+# ==============================================================================
+
+
+class Rol(models.Model):
+    """Mapea la tabla 'rol' del Modelo Relacional."""
+
+    id_rol = models.AutoField(primary_key=True)
+    nombre = models.CharField(max_length=25)
+    descripcion = models.CharField(max_length=200, blank=True, null=True)
+    exento_autorizacion = models.BooleanField(default=False)
+    puede_autorizar = models.BooleanField(default=False)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        app_label = "models"
+        db_table = "rol"
+        managed = False
+
+    def __str__(self) -> str:
+        return self.nombre
+
+
+class Usuario(models.Model):
+    """Mapea la tabla 'usuario' del Modelo Relacional."""
+
+    id_usuario = models.AutoField(primary_key=True)
+    id_rol = models.IntegerField()
+    nombres = models.CharField(max_length=100)
+    apellidos = models.CharField(max_length=100)
+    rut = models.CharField(max_length=12)
+    correo_electronico = models.CharField(max_length=100)
+    telefono = models.CharField(max_length=9, blank=True, null=True)
+    usuario = models.CharField(max_length=100)
+    password_hash = models.CharField(max_length=255)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        app_label = "models"
+        db_table = "usuario"
+        managed = False
+
+    def __str__(self) -> str:
+        return f"{self.nombres} {self.apellidos} ({self.usuario})"
+
+
+def obtener_permisos_rol_usuario(id_usuario: int) -> Dict[str, Any]:
+    """Consulta 'exento_autorizacion' y 'puede_autorizar' del rol asociado a 'id_usuario'."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT r.id_rol, r.nombre, r.exento_autorizacion, r.puede_autorizar
+                FROM usuario u
+                JOIN rol r ON r.id_rol = u.id_rol
+                WHERE u.id_usuario = %s AND u.activo = TRUE AND r.activo = TRUE
+                LIMIT 1;
+                """,
+                [id_usuario],
+            )
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "id_rol": int(row[0]),
+                    "rol": row[1],
+                    "exento_autorizacion": bool(row[2]),
+                    "puede_autorizar": bool(row[3]),
+                }
+    except Exception:
+        pass
+    return {
+        "id_rol": None,
+        "rol": None,
+        "exento_autorizacion": False,
+        "puede_autorizar": False,
+    }
+
+
+def usuario_esta_exento_autorizacion(id_usuario: int) -> bool:
+    """Indica si el usuario puede ejecutar acciones críticas sin autorización previa."""
+    perms = obtener_permisos_rol_usuario(id_usuario)
+    return bool(perms["exento_autorizacion"])
+
+
+def usuario_puede_autorizar(id_usuario: int) -> bool:
+    """Indica si el usuario tiene facultad para aprobar o rechazar autorizaciones."""
+    perms = obtener_permisos_rol_usuario(id_usuario)
+    return bool(perms["puede_autorizar"])
+
+
+def registrar_solicitud_autorizacion(
+    id_solicitante: int,
+    tabla_afectada: str,
+    accion: str,
+    motivo: str,
+    justificacion: str,
+    datos_propuestos: Dict[str, Any],
+    id_movimiento: Optional[int] = None,
+    id_autorizador: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Registra una solicitud en 'autorizacion' ('modificar' o 'eliminar')."""
+    accion_norm = accion.strip().lower()
+    if accion_norm not in ("modificar", "eliminar"):
+        raise ValueError("La acción de autorización debe ser 'modificar' o 'eliminar'.")
+
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO autorizacion (
+                    id_movimiento, id_solicitante, id_autorizador, tabla_afectada,
+                    accion, motivo, justificacion, datos_propuestos,
+                    estado, ejecutada, fecha_solicitud
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, 'pendiente', FALSE, %s)
+                RETURNING id_autorizacion, estado, fecha_solicitud;
+                """,
+                [
+                    id_movimiento,
+                    id_solicitante,
+                    id_autorizador,
+                    tabla_afectada[:50],
+                    accion_norm,
+                    motivo[:150],
+                    justificacion[:500],
+                    json.dumps(datos_propuestos),
+                    date.today(),
+                ],
+            )
+            row = cursor.fetchone()
+
+    return {
+        "id_autorizacion": int(row[0]),
+        "estado": row[1],
+        "fecha_solicitud": str(row[2]),
+        "requiere_autorizacion": True,
+    }
+
+
+def listar_autorizaciones_pendientes() -> List[Dict[str, Any]]:
+    """Lista las solicitudes pendientes desde 'autorizacion'."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id_autorizacion, id_movimiento, id_solicitante, id_autorizador,
+                       tabla_afectada, accion, motivo, justificacion,
+                       datos_propuestos, estado, ejecutada, fecha_solicitud, fecha_resolucion
+                FROM autorizacion
+                WHERE estado = 'pendiente'
+                ORDER BY id_autorizacion ASC;
+                """
+            )
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id_autorizacion": r[0],
+                    "id_movimiento": r[1],
+                    "id_solicitante": r[2],
+                    "id_autorizador": r[3],
+                    "tabla_afectada": r[4],
+                    "accion": r[5],
+                    "motivo": r[6],
+                    "justificacion": r[7],
+                    "datos_propuestos": r[8],
+                    "estado": r[9],
+                    "ejecutada": r[10],
+                    "fecha_solicitud": str(r[11]) if r[11] else None,
+                    "fecha_resolucion": str(r[12]) if r[12] else None,
+                }
+                for r in rows
+            ]
+    except Exception:
+        return []
+
+
+def resolver_autorizacion(
+    id_autorizacion: int,
+    id_autorizador: int,
+    nuevo_estado: str,
+    ejecutada: bool = False,
+) -> Dict[str, Any]:
+    """Aprueba ('aprobada') o rechaza ('rechazada') una autorización pendiente."""
+    estado_norm = nuevo_estado.strip().lower()
+    if estado_norm not in ("aprobada", "rechazada"):
+        raise ValueError("El estado de resolución debe ser 'aprobada' o 'rechazada'.")
+
+    if not usuario_puede_autorizar(id_autorizador):
+        raise PermissionError("El usuario no tiene permiso 'puede_autorizar' en su rol.")
+
+    marcar_ejecutada = bool(ejecutada) if estado_norm == "aprobada" else False
+
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE autorizacion
+                SET id_autorizador = %s,
+                    estado = %s,
+                    ejecutada = %s,
+                    fecha_resolucion = %s
+                WHERE id_autorizacion = %s
+                RETURNING id_autorizacion, estado, ejecutada, fecha_resolucion;
+                """,
+                [
+                    id_autorizador,
+                    estado_norm,
+                    marcar_ejecutada,
+                    date.today(),
+                    id_autorizacion,
+                ],
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise LookupError(f"Autorización #{id_autorizacion} no encontrada.")
+
+    return {
+        "id_autorizacion": int(row[0]),
+        "estado": row[1],
+        "ejecutada": bool(row[2]),
+        "fecha_resolucion": str(row[3]),
+    }

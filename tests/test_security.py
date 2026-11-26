@@ -176,9 +176,31 @@ def test_inventario_api_endpoints_and_rbac():
     resp_health = api_health(req_health)
     assert resp_health.status_code == 200
 
+    items_mock = [
+        {
+            "id": 1,
+            "sku": "INS-001",
+            "nombre": "Válvula",
+            "stock": 10,
+            "ubicacion": "Camara 1",
+            "precio": 1500.0,
+            "estado": "en bodega",
+        },
+        {
+            "id": 2,
+            "sku": "INS-002",
+            "nombre": "Sensor",
+            "stock": 2,
+            "ubicacion": "Camara 2",
+            "precio": 3200.0,
+            "estado": "en bodega",
+        },
+    ]
+
     req_list = factory.get("/api/v1/inventario/items/")
     req_list.jwt_role = "FINANZAS"
-    resp_list = api_listar_inventario(req_list)
+    with patch("views.api_views.listar_inventario", return_value=items_mock):
+        resp_list = api_listar_inventario(req_list)
     assert resp_list.status_code == 200
     body_list = json.loads(resp_list.content.decode("utf-8"))
     assert body_list["total"] >= 2
@@ -211,7 +233,19 @@ def test_inventario_api_endpoints_and_rbac():
         content_type="application/json",
     )
     req_create_201.jwt_role = "BODEGUERO"
-    resp_create_201 = api_crear_inventario(req_create_201)
+    with patch(
+        "views.api_views.crear_item_inventario",
+        side_effect=lambda sku, nombre, stock, ubicacion, **kwargs: {
+            "id": 99,
+            "sku": sku,
+            "nombre": nombre,
+            "stock": stock,
+            "ubicacion": ubicacion,
+            "precio": kwargs.get("precio", 0.0),
+            "estado": "en bodega",
+        },
+    ):
+        resp_create_201 = api_crear_inventario(req_create_201)
     assert resp_create_201.status_code == 201
     created = json.loads(resp_create_201.content.decode("utf-8"))["item"]
     assert "<script>" not in created["nombre"]

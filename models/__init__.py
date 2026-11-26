@@ -1,12 +1,6 @@
 """Capa Modelo (MVC) - Proyecto Alpha."""
 
-from models.seguridad_model import (
-    AES256FieldCipher,
-    AuthServiceClient,
-    JWTManager,
-    hash_password,
-    verify_password,
-)
+from django.apps import apps
 
 __all__ = [
     "hash_password",
@@ -15,3 +9,12 @@ __all__ = [
     "JWTManager",
     "AuthServiceClient",
 ]
+
+if apps.ready:
+    from models.seguridad_model import (
+        AES256FieldCipher,
+        AuthServiceClient,
+        JWTManager,
+        hash_password,
+        verify_password,
+    )
