@@ -5,57 +5,10 @@ import { apiFetch } from '../../services/api';
 export default function Inventario() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo (respaldo si Django no responde)
-    const [articulos, setArticulos] = useState([
-        {
-            id_articulo: 500,
-            id_categoria: 1,
-            categoria_nombre: 'Climatización',
-            id_ubicacion: 1,
-            ubicacion_nombre: 'Bodega Central - Pasillo A',
-            codigo_de_barras: '12034298034821',
-            nombre: 'Aire Acondicionado',
-            stock_actual: 45,
-            stock_critico: 10,
-            unidad_de_medida: 'Unidad',
-            precio: 350000,
-            fecha_ingreso: '2026-11-17 10:30',
-            estado: 'en bodega',
-            activo: true
-        },
-        {
-            id_articulo: 502,
-            id_categoria: 2,
-            categoria_nombre: 'Tuberías e Insumos',
-            id_ubicacion: 1,
-            ubicacion_nombre: 'Bodega Central - Pasillo C',
-            codigo_de_barras: '7809876543210',
-            nombre: 'Cañería de Cobre 1/2',
-            stock_actual: 12,
-            stock_critico: 10,
-            unidad_de_medida: 'Metros',
-            precio: 8900,
-            fecha_ingreso: '2026-11-18 11:20',
-            estado: 'en bodega',
-            activo: true
-        },
-        {
-            id_articulo: 501,
-            id_categoria: 3,
-            categoria_nombre: 'Repuestos y Componentes',
-            id_ubicacion: 2,
-            ubicacion_nombre: 'Bodega Central - Pasillo B',
-            codigo_de_barras: '7801234567890',
-            nombre: 'Válvula de Presión 3/4',
-            stock_actual: 0,
-            stock_critico: 5,
-            unidad_de_medida: 'Unidad',
-            precio: 24500,
-            fecha_ingreso: '2026-11-18 15:10',
-            estado: 'sin stock',
-            activo: true
-        }
-    ]);
+    const [articulos, setArticulos] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
+    const [avisoAccion, setAvisoAccion] = useState('');
 
     // Estados de búsqueda y filtros
     const [busqueda, setBusqueda] = useState('');
@@ -67,28 +20,33 @@ export default function Inventario() {
     const [articuloEditando, setArticuloEditando] = useState(null);
 
     useEffect(() => {
+        setCargando(true);
+        setErrorCarga('');
+
         apiFetch('/inventario/items/')
             .then((data) => {
                 const lista = Array.isArray(data) ? data : (data.items || []);
-                if (lista.length > 0) {
-                    const normalizados = lista.map((item, idx) => ({
-                        id_articulo: item.id_articulo ?? item.id ?? idx + 1,
-                        categoria_nombre: item.categoria_nombre ?? 'General',
-                        ubicacion_nombre: item.ubicacion_nombre ?? item.ubicacion ?? 'Bodega Central',
-                        codigo_de_barras: item.codigo_de_barras ?? item.sku ?? 'S/N',
-                        nombre: item.nombre ?? 'Sin nombre',
-                        stock_actual: Number(item.stock_actual ?? item.stock ?? 0),
-                        stock_critico: Number(item.stock_critico ?? 5),
-                        unidad_de_medida: item.unidad_de_medida ?? 'Unidad',
-                        precio: Number(item.precio ?? 0),
-                        estado: Number(item.stock_actual ?? item.stock ?? 0) > 0 ? 'en bodega' : 'sin stock',
-                        activo: true
-                    }));
-                    setArticulos(normalizados);
-                }
+                const normalizados = lista.map((item, idx) => ({
+                    id_articulo: item.id_articulo ?? item.id ?? idx + 1,
+                    categoria_nombre: item.categoria_nombre ?? 'General',
+                    ubicacion_nombre: item.ubicacion_nombre ?? item.ubicacion ?? 'Bodega Central',
+                    codigo_de_barras: item.codigo_de_barras ?? item.sku ?? 'S/N',
+                    nombre: item.nombre ?? 'Sin nombre',
+                    stock_actual: Number(item.stock_actual ?? item.stock ?? 0),
+                    stock_critico: Number(item.stock_critico ?? 5),
+                    unidad_de_medida: item.unidad_de_medida ?? 'Unidad',
+                    precio: Number(item.precio ?? 0),
+                    estado: Number(item.stock_actual ?? item.stock ?? 0) > 0 ? 'en bodega' : 'sin stock',
+                    activo: true
+                }));
+                setArticulos(normalizados);
             })
             .catch((err) => {
-                console.warn('No se pudo conectar con Django en Inventario, usando datos locales:', err.message);
+                setErrorCarga(err.message || 'No se pudo cargar el inventario desde el servidor.');
+                setArticulos([]);
+            })
+            .finally(() => {
+                setCargando(false);
             });
     }, []);
 
@@ -203,6 +161,7 @@ export default function Inventario() {
     };
 
     const handleAbrirEditar = (articulo) => {
+        setAvisoAccion('');
         setArticuloEditando({ ...articulo });
     };
 
@@ -216,24 +175,7 @@ export default function Inventario() {
 
     const handleGuardarEdicion = (e) => {
         e.preventDefault();
-        const stockNum = parseInt(articuloEditando.stock_actual, 10) || 0;
-        const criticoNum = parseInt(articuloEditando.stock_critico, 10) || 0;
-        const precioNum = parseFloat(articuloEditando.precio) || 0;
-
-        const actualizado = {
-            ...articuloEditando,
-            stock_actual: stockNum,
-            stock_critico: criticoNum,
-            precio: precioNum,
-            estado: stockNum > 0 ? 'en bodega' : 'sin stock'
-        };
-
-        setArticulos((prev) =>
-            prev.map((item) =>
-                item.id_articulo === actualizado.id_articulo ? actualizado : item
-            )
-        );
-        console.log('Artículo editado (simulación local):', actualizado);
+        setAvisoAccion('La edición de artículos aún no está conectada a un endpoint en el backend; no se guardó en la base de datos.');
         setArticuloEditando(null);
     };
 
@@ -243,13 +185,7 @@ export default function Inventario() {
         );
         if (!confirmar) return;
 
-        setArticulos((prev) =>
-            prev.filter((item) => item.id_articulo !== articulo.id_articulo)
-        );
-        console.log('Artículo desactivado/eliminado (simulación local):', {
-            id_articulo: articulo.id_articulo,
-            activo: false
-        });
+        setAvisoAccion('La eliminación de artículos aún no está conectada a un endpoint en el backend; no se aplicó en la base de datos.');
     };
 
     return (
@@ -276,6 +212,18 @@ export default function Inventario() {
                 </div>
 
                 <div className="bg-white p-3 p-md-5 border-top-0">
+                    {errorCarga && (
+                        <div className="alert alert-danger rounded-3 mb-4">
+                            <strong>Error al cargar inventario:</strong> {errorCarga}
+                        </div>
+                    )}
+
+                    {avisoAccion && (
+                        <div className="alert alert-warning rounded-3 mb-4">
+                            {avisoAccion}
+                        </div>
+                    )}
+
                     {/* Barra de búsqueda y filtros */}
                     <div className="row g-3 mb-3 align-items-end">
                         <div className="col-12 col-md-5">
@@ -425,7 +373,13 @@ export default function Inventario() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {articulosFiltrados.length === 0 ? (
+                                {cargando ? (
+                                    <tr>
+                                        <td colSpan="10" className="text-center py-4 text-muted">
+                                            Cargando inventario desde el servidor...
+                                        </td>
+                                    </tr>
+                                ) : articulosFiltrados.length === 0 ? (
                                     <tr>
                                         <td colSpan="10" className="text-center py-4 text-muted">
                                             {hayFiltrosActivos
@@ -486,7 +440,11 @@ export default function Inventario() {
 
                     {/* VISTA MÓVIL: Tarjetas (Cards) legibles con semáforo y botones >= 48px */}
                     <div className="d-block d-md-none">
-                        {articulosFiltrados.length === 0 ? (
+                        {cargando ? (
+                            <div className="text-center py-4 text-muted border rounded-4 bg-light">
+                                Cargando inventario desde el servidor...
+                            </div>
+                        ) : articulosFiltrados.length === 0 ? (
                             <div className="text-center py-4 text-muted border rounded-4 bg-light">
                                 {hayFiltrosActivos
                                     ? 'No se encontraron artículos con los filtros seleccionados.'

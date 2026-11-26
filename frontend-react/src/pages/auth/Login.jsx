@@ -5,15 +5,6 @@ import { authFetch } from '../../services/api';
 export default function Login() {
     const navigate = useNavigate();
 
-    // Usuarios de prueba (respaldo si el microservicio Auth IAM no responde)
-    const usuariosMock = [
-        { id_usuario: 1, usuario: 'admin', email: 'admin@fyag.cl', contrasena: '123', nombres: 'Pedro Benjamín', apellidos: 'Aedo Lagos', id_rol: 1, rol: 'Administrador', ruta: '/admin', activo: true },
-        { id_usuario: 2, usuario: 'bodeguero', email: 'bodeguero@fyag.cl', contrasena: '123', nombres: 'Carlos', apellidos: 'Soto Muñoz', id_rol: 2, rol: 'Bodeguero', ruta: '/bodeguero', activo: true },
-        { id_usuario: 3, usuario: 'tecnico', email: 'tecnico@fyag.cl', contrasena: '123', nombres: 'Luis', apellidos: 'Rojas Vera', id_rol: 3, rol: 'Técnico', ruta: '/tecnico', activo: true },
-        { id_usuario: 4, usuario: 'finanzas', email: 'finanzas@fyag.cl', contrasena: '123', nombres: 'María', apellidos: 'Fuentes Díaz', id_rol: 4, rol: 'Finanzas', ruta: '/finanzas', activo: true },
-        { id_usuario: 5, usuario: 'supervisor', email: 'supervisor@fyag.cl', contrasena: '123', nombres: 'Andrea', apellidos: 'Morales Pino', id_rol: 5, rol: 'Supervisor de Obras', ruta: '/supervisor', activo: true }
-    ];
-
     const [formData, setFormData] = useState({
         usuario: '',
         contrasena: '',
@@ -97,7 +88,6 @@ export default function Login() {
         setError('');
 
         try {
-            // 1. Autentica contra el microservicio Auth IAM (POST /auth/login)
             const data = await authFetch('/auth/login', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -124,47 +114,7 @@ export default function Login() {
 
             guardarSesionYEntrar(sesionBackend, obtenerRutaPorRol(rolCrudo));
         } catch (err) {
-            // 2. Si el microservicio Auth no responde (apagado o sin red), usa la simulación local
-            const sinConexionBackend =
-                err instanceof TypeError ||
-                err.message.includes('Failed to fetch') ||
-                err.message.includes('NetworkError') ||
-                err.message.includes('404');
-
-            if (sinConexionBackend) {
-                console.warn('Auth IAM no disponible, validando con usuarios locales:', err.message);
-
-                const encontrado = usuariosMock.find(
-                    (u) =>
-                        (u.usuario.toLowerCase() === usuarioLimpio.toLowerCase() ||
-                            u.email.toLowerCase() === usuarioLimpio.toLowerCase()) &&
-                        u.contrasena === formData.contrasena
-                );
-
-                if (!encontrado) {
-                    setError('Usuario o contraseña incorrectos. (Modo local: admin, bodeguero, tecnico, finanzas o supervisor / clave: 123)');
-                    return;
-                }
-
-                if (!encontrado.activo) {
-                    setError('Esta cuenta se encuentra desactivada. Contacte a un Administrador.');
-                    return;
-                }
-
-                const sesion = {
-                    id_usuario: encontrado.id_usuario,
-                    usuario: encontrado.usuario,
-                    nombres: encontrado.nombres,
-                    apellidos: encontrado.apellidos,
-                    id_rol: encontrado.id_rol,
-                    rol: encontrado.rol
-                };
-
-                guardarSesionYEntrar(sesion, encontrado.ruta);
-            } else {
-                // Si Auth IAM respondió (ej. 401 Credenciales inválidas o Dispositivo revocado), muestra el error real
-                setError(err.message || 'Credenciales inválidas.');
-            }
+            setError(err.message || 'No se pudo iniciar sesión con el servicio de autenticación.');
         } finally {
             setCargando(false);
         }
