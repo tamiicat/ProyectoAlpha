@@ -249,3 +249,22 @@ body {
     white-space: normal;
   }
 }
+
+/* Sidebar flotante en móvil para que no aplaste el contenido */
+@media (max-width: 991.98px) {
+  .fyag-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1050;
+    height: 100vh;
+  }
+
+  .fyag-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(15, 23, 42, 0.55);
+    z-index: 1040;
+  }
+}

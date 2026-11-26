@@ -152,6 +152,7 @@ export default function Dashboard({ rol = 'admin' }) {
   const handleCerrarSesion = () => {
     localStorage.removeItem('usuarioFYAG');
     sessionStorage.removeItem('usuarioFYAG');
+    sessionStorage.removeItem('rolVistaFYAG');
     navigate('/');
   };
 
@@ -171,8 +172,9 @@ export default function Dashboard({ rol = 'admin' }) {
   };
 
   useEffect(() => {
+    sessionStorage.setItem('rolVistaFYAG', rol);
     cargarDatos();
-  }, []);
+  }, [rol]);
 
   const normalizados = useMemo(() => {
     return items.map((it, idx) => {
@@ -241,9 +243,17 @@ export default function Dashboard({ rol = 'admin' }) {
 
   return (
     <div className="d-flex" style={{ minHeight: '100vh', backgroundColor: '#f4f7fa' }}>
+      {/* Fondo oscuro en móvil para cerrar el menú al tocar fuera */}
+      {menuAbierto && (
+        <div
+          className="fyag-sidebar-backdrop d-lg-none"
+          onClick={() => setMenuAbierto(false)}
+        />
+      )}
+
       {/* SIDEBAR */}
       <aside
-        className={`d-flex flex-column text-white flex-shrink-0 ${
+        className={`fyag-sidebar d-flex flex-column text-white flex-shrink-0 ${
           menuAbierto ? 'd-flex' : 'd-none d-lg-flex'
         }`}
         style={{
@@ -293,6 +303,7 @@ export default function Dashboard({ rol = 'admin' }) {
                   <Link
                     key={item.ruta}
                     to={item.ruta}
+                    onClick={() => setMenuAbierto(false)}
                     className="d-flex align-items-center gap-2 text-white text-decoration-none px-3 py-2 rounded-3"
                     style={{
                       fontSize: '0.9rem',

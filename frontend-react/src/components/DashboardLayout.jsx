@@ -175,9 +175,17 @@ export default function DashboardLayout() {
         '--fyag-accent': tema.colorAcento,
       }}
     >
+      {/* Fondo oscuro en móvil para cerrar el menú al tocar fuera */}
+      {menuAbierto && (
+        <div
+          className="fyag-sidebar-backdrop d-lg-none"
+          onClick={() => setMenuAbierto(false)}
+        />
+      )}
+
       {/* SIDEBAR */}
       <aside
-        className={`d-flex flex-column text-white flex-shrink-0 ${
+        className={`fyag-sidebar d-flex flex-column text-white flex-shrink-0 ${
           menuAbierto ? 'd-flex' : 'd-none d-lg-flex'
         }`}
         style={{
