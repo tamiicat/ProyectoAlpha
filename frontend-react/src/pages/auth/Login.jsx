@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { authFetch } from '../../services/api';
 
 export default function Login() {
@@ -228,22 +228,6 @@ export default function Login() {
                             </button>
                         </form>
                     </div>
-                </div>
-            </div>
-
-            {/* Panel de Entorno de Pruebas (Accesos directos para la evaluación) */}
-            <div className="mt-5 w-100 text-center" style={{ maxWidth: '900px' }}>
-                <div className="mb-3">
-                    <span className="badge bg-warning text-dark px-4 py-2 rounded-pill shadow-sm border border-warning" style={{ fontSize: '0.85rem' }}>
-                        <i className="bi bi-tools me-2"></i> Entorno de Evaluación: Accesos Rápidos
-                    </span>
-                </div>
-                <div className="d-flex flex-wrap justify-content-center gap-2">
-                    <Link to="/admin" className="btn btn-outline-primary btn-sm px-4 py-2 fw-semibold rounded-pill">Admin</Link>
-                    <Link to="/bodeguero" className="btn btn-outline-success btn-sm px-4 py-2 fw-semibold rounded-pill">Bodeguero</Link>
-                    <Link to="/tecnico" className="btn btn-outline-secondary btn-sm px-4 py-2 fw-semibold rounded-pill">Técnico</Link>
-                    <Link to="/finanzas" className="btn btn-outline-warning text-dark btn-sm px-4 py-2 fw-semibold rounded-pill">Finanzas</Link>
-                    <Link to="/supervisor" className="btn btn-outline-danger btn-sm px-4 py-2 fw-semibold rounded-pill">Supervisor de Obras</Link>
                 </div>
             </div>
         </div>
