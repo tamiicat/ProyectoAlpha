@@ -210,7 +210,7 @@ def api_buscar_inventario(request: Any) -> JsonResponse:
 
 @require_rbac("inventario_bodega", "R")
 def api_categorias(request: Any) -> JsonResponse:
-    """GET /categorias/ y /api/v1/inventario/categorias/ -> lista categorías activas."""
+    """GET /api/v1/categorias/ -> lista categorías activas."""
     if request.method != "GET":
         return JsonResponse({"error": "Método no permitido."}, status=405)
 
@@ -242,7 +242,7 @@ def api_categorias(request: Any) -> JsonResponse:
 
 @require_rbac("inventario_bodega", "R")
 def api_ubicaciones(request: Any) -> JsonResponse:
-    """GET /ubicaciones/ y /api/v1/inventario/ubicaciones/ -> lista ubicaciones activas."""
+    """GET /api/v1/ubicaciones/ -> lista ubicaciones activas."""
     if request.method != "GET":
         return JsonResponse({"error": "Método no permitido."}, status=405)
 

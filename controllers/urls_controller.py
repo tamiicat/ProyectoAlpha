@@ -27,10 +27,10 @@ urlpatterns = [
     path("api/v1/inventario/items/", api_listar_inventario, name="inventario_listar"),
     path("api/v1/inventario/items/crear/", api_crear_inventario, name="inventario_crear"),
     path("api/v1/inventario/search/", api_buscar_inventario, name="inventario_search"),
+    path("api/v1/categorias/", api_categorias, name="api_categorias"),
+    path("api/v1/ubicaciones/", api_ubicaciones, name="api_ubicaciones"),
     path("api/v1/inventario/categorias/", api_categorias, name="inventario_categorias"),
     path("api/v1/inventario/ubicaciones/", api_ubicaciones, name="inventario_ubicaciones"),
-    path("categorias/", api_categorias, name="categorias_directo"),
-    path("ubicaciones/", api_ubicaciones, name="ubicaciones_directo"),
     path("api/v1/movimientos/orquestar/", api_orquestar_movimiento, name="movimientos_orquestar"),
     path("api/v1/sync/batch/", api_sincronizar_offline, name="sync_batch"),
     # Nuevas rutas para Usuarios, Cardex y Solicitudes
