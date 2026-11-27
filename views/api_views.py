@@ -185,6 +185,17 @@ def api_crear_inventario(request: Any) -> JsonResponse:
             {"error": "Datos de inventario inválidos."}, status=400
         )
 
+    jwt_payload = getattr(request, "jwt_payload", {}) or {}
+    usuario_ref = sanitize_text_input(
+        str(
+            data.get("usuario")
+            or jwt_payload.get("usuario")
+            or jwt_payload.get("sub")
+            or jwt_payload.get("email")
+            or ""
+        ).strip()
+    )
+
     creado = crear_item_inventario(
         sku=sku,
         nombre=nombre,
@@ -196,7 +207,13 @@ def api_crear_inventario(request: Any) -> JsonResponse:
         unidad=unidad,
         precio=precio,
         stock_critico=stock_critico,
+        usuario_ref=usuario_ref or None,
     )
+    if isinstance(creado, dict) and creado.get("error"):
+        return JsonResponse(
+            {"error": creado["error"]},
+            status=int(creado.get("status", 400)),
+        )
     return JsonResponse({"item": creado}, status=201)
 
 
@@ -275,6 +292,7 @@ def api_categorias(request: Any) -> JsonResponse:
                     """
                     INSERT INTO categoria (nombre, activo)
                     VALUES (%s, TRUE)
+                    ON CONFLICT (nombre) DO UPDATE SET activo = TRUE
                     RETURNING id_categoria;
                     """,
                     [nombre[:100]],
