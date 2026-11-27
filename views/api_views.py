@@ -1661,7 +1661,62 @@ def api_despachos(request: Any) -> JsonResponse:
                     ORDER BY id_despacho DESC;
                     """
                 )
+<<<<<<< HEAD
                 for row in cursor.fetchall():
+=======
+                mapa_clientes = {r[0]: r[1] for r in cursor.fetchall()}
+
+                cursor.execute("SELECT * FROM obra;")
+                obra_cols = [c[0] for c in cursor.description] if cursor.description else []
+                mapa_obras = {}
+                for r in cursor.fetchall():
+                    o_rec = dict(zip(obra_cols, r))
+                    o_id = o_rec.get("id_obra") or o_rec.get("id")
+                    o_nom = o_rec.get("nombre") or o_rec.get("descripcion") or o_rec.get("codigo") or f"Obra #{o_id}"
+                    if o_id is not None:
+                        mapa_obras[o_id] = o_nom
+
+                cursor.execute(
+                    "SELECT id_usuario, COALESCE(NULLIF(TRIM(CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, ''))), ''), usuario) FROM usuario;"
+                )
+                mapa_usuarios = {r[0]: r[1] for r in cursor.fetchall()}
+
+                cursor.execute("SELECT id_articulo, nombre, unidad_de_medida FROM articulo;")
+                mapa_articulos = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
+
+                despachos: list[dict[str, Any]] = []
+                for fila in filas:
+                    rec = dict(zip(headers, fila))
+                    id_desp = rec.get("id_despacho") or rec.get("id")
+                    id_cli = rec.get("id_cliente")
+                    id_obr = rec.get("id_obra")
+                    id_usr = rec.get("id_usuario")
+
+                    detalles_lista: list[dict[str, Any]] = []
+                    if tabla_det and id_desp is not None:
+                        col_fk = "id_despacho" if "id_despacho" in cols_det else headers[0]
+                        cursor.execute(
+                            f"SELECT * FROM {tabla_det} WHERE {col_fk} = %s ORDER BY 1 ASC;",
+                            [id_desp],
+                        )
+                        det_headers = [c[0] for c in cursor.description] if cursor.description else []
+                        for d_row in cursor.fetchall():
+                            d_rec = dict(zip(det_headers, d_row))
+                            id_art = d_rec.get("id_articulo")
+                            art_info = mapa_articulos.get(id_art, (f"Artículo #{id_art}", "unidad"))
+                            detalles_lista.append(
+                                {
+                                    "id_detalle": d_rec.get("id_detalle") or d_rec.get("id_detalle_despacho") or d_rec.get("id"),
+                                    "id_articulo": id_art,
+                                    "articulo_nombre": art_info[0],
+                                    "unidad_de_medida": art_info[1] or "unidad",
+                                    "cantidad": d_rec.get("cantidad", 1),
+                                }
+                            )
+
+                    f_desp = rec.get("fecha_despacho") or rec.get("fecha") or ""
+                    f_ent = rec.get("fecha_entrega") or ""
+>>>>>>> db88d23859c6b9c7e3734048dbf113add11105fc
                     despachos.append(
                         {
                             "id": row[0],
@@ -1699,4 +1754,39 @@ def api_despachos(request: Any) -> JsonResponse:
             status=201,
         )
 
+<<<<<<< HEAD
     return JsonResponse({"error": "Método no permitido."}, status=405)
+=======
+
+@csrf_exempt
+@require_rbac("inventario_bodega", "U")
+def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
+    """PATCH /api/v1/despachos/<id_despacho>/ -> actualiza estado real en PostgreSQL."""
+    if request.method not in ("PATCH", "PUT"):
+        return JsonResponse({"error": "Método no permitido."}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    nuevo_estado = sanitize_text_input(str(data.get("estado", "")).strip()).lower()
+    if not nuevo_estado:
+        return JsonResponse({"error": "estado es obligatorio."}, status=400)
+
+    try:
+        cols_desp = _columnas_tabla_pg("despacho")
+        pk_col = "id_despacho" if "id_despacho" in cols_desp else "id"
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE despacho SET estado = %s WHERE {pk_col} = %s;",
+                [nuevo_estado, id_despacho],
+            )
+        return JsonResponse({"id_despacho": id_despacho, "estado": nuevo_estado}, status=200)
+    except Exception as exc:
+        return JsonResponse(
+            {"error": f"Error PostgreSQL al actualizar despacho: {exc}"},
+            status=500,
+        )
+
+>>>>>>> db88d23859c6b9c7e3734048dbf113add11105fc
