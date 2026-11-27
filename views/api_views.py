@@ -1003,8 +1003,28 @@ def api_facturas(request: Any) -> JsonResponse:
                 except (TypeError, ValueError):
                     pass
 
+        if id_usuario is None:
+            user_obj = getattr(request, "user", None)
+            if getattr(user_obj, "is_authenticated", False) and getattr(user_obj, "pk", None):
+                try:
+                    id_usuario = int(user_obj.pk)
+                except (TypeError, ValueError):
+                    id_usuario = None
+
         try:
             with connection.cursor() as cursor:
+                if id_usuario is None:
+                    cursor.execute("SELECT id_usuario FROM usuario ORDER BY id_usuario ASC LIMIT 1;")
+                    row_usr = cursor.fetchone()
+                    if row_usr and row_usr[0] is not None:
+                        id_usuario = int(row_usr[0])
+
+                if id_usuario is None:
+                    return JsonResponse(
+                        {"error": "No se pudo determinar un id_usuario válido para la factura."},
+                        status=400,
+                    )
+
                 cursor.execute(
                     """
                     INSERT INTO factura (
