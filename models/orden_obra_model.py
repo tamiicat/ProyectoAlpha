@@ -174,19 +174,29 @@ def _resolver_ids_obra() -> tuple[int, int]:
 
 
 def _resolver_id_usuario(usuario_ref: Optional[str] = None) -> int:
-    """Resuelve id_usuario desde correo/usuario o toma el primer usuario activo."""
+    """Resuelve id_usuario desde correo/usuario/id o toma el primer usuario activo."""
     usr_id, _ = _resolver_ids_obra()
     if not usuario_ref:
         return usr_id
+    ref_str = str(usuario_ref).strip()
     try:
         with connection.cursor() as cursor:
+            if ref_str.isdigit():
+                cursor.execute(
+                    "SELECT id_usuario FROM usuario WHERE id_usuario = %s LIMIT 1;",
+                    [int(ref_str)],
+                )
+                row = cursor.fetchone()
+                if row and row[0] is not None:
+                    return int(row[0])
+
             cursor.execute(
                 """
                 SELECT id_usuario FROM usuario
                 WHERE LOWER(usuario) = LOWER(%s) OR LOWER(correo_electronico) = LOWER(%s)
                 LIMIT 1;
                 """,
-                [usuario_ref, usuario_ref],
+                [ref_str, ref_str],
             )
             row = cursor.fetchone()
             if row and row[0] is not None:
@@ -194,6 +204,14 @@ def _resolver_id_usuario(usuario_ref: Optional[str] = None) -> int:
     except Exception:
         pass
     return usr_id
+
+
+def _set_pg_usuario_sesion(cursor: Any, id_usuario: int) -> None:
+    """Establece app.id_usuario en la sesión PostgreSQL para triggers como fn_articulo_alta_cardex()."""
+    cursor.execute(
+        "SELECT set_config('app.id_usuario', %s, true);",
+        [str(int(id_usuario))],
+    )
 
 
 def procesar_avance_obra(
@@ -232,6 +250,7 @@ def procesar_avance_obra(
     if observacion:
         try:
             with connection.cursor() as cursor:
+                _set_pg_usuario_sesion(cursor, usr_id)
                 cursor.execute(
                     """
                     INSERT INTO reporte (id_obra, id_usuario, fecha, observaciones)
@@ -289,11 +308,13 @@ def crear_item_inventario(
     unidad: str = "unidad",
     precio: float = 0.0,
     stock_critico: int = 5,
+    usuario_ref: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Crea o actualiza un artículo directamente en la tabla 'articulo'."""
     cat_ref = categoria_id if categoria_id not in (None, "") else categoria
     ubi_ref = ubicacion_id if ubicacion_id not in (None, "") else ubicacion
     cat_final, ubi_final = _resolver_ids_base(cat_ref, ubi_ref)
+    id_usr_sesion = _resolver_id_usuario(usuario_ref)
 
     estado_art = "sin stock" if stock <= 0 else "en bodega"
     codigo_sku = str(sku).strip()[:20] if sku and str(sku).strip() else None
@@ -309,6 +330,9 @@ def crear_item_inventario(
 
     try:
         with transaction.atomic():
+            with connection.cursor() as cursor:
+                _set_pg_usuario_sesion(cursor, id_usr_sesion)
+
             existente = None
             if codigo_sku:
                 existente = Articulo.objects.filter(
@@ -335,6 +359,7 @@ def crear_item_inventario(
                 obj = existente
             else:
                 with connection.cursor() as cursor:
+                    _set_pg_usuario_sesion(cursor, id_usr_sesion)
                     cursor.execute(
                         """
                         INSERT INTO articulo (
@@ -396,6 +421,7 @@ def _registrar_cardex_sql(
     """Inserta movimiento en 'cardex' y devuelve id_movimiento."""
     try:
         with connection.cursor() as cursor:
+            _set_pg_usuario_sesion(cursor, id_usuario)
             cursor.execute(
                 """
                 INSERT INTO cardex (
@@ -517,6 +543,7 @@ def crear_solicitud_sql(
     try:
         with transaction.atomic():
             with connection.cursor() as cursor:
+                _set_pg_usuario_sesion(cursor, id_usuario)
                 cursor.execute(
                     """
                     INSERT INTO solicitud_articulo (id_usuario, id_obra, fecha, comentarios)
@@ -651,6 +678,7 @@ def orquestar_movimiento_bodega(
             ubicacion_id=item["ubicacion_id"],
             categoria_id=item["id_categoria"],
             precio=costo_unit,
+            usuario_ref=usuario,
         )
         id_movimiento = _registrar_cardex_sql(
             id_articulo=int(item["id_articulo"]),
