@@ -28,6 +28,7 @@ export default function CrearCuenta() {
 
     const [guardando, setGuardando] = useState(false);
     const [error, setError] = useState('');
+    const [exito, setExito] = useState('');
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -35,11 +36,14 @@ export default function CrearCuenta() {
             ...prev,
             [name]: value
         }));
+        if (error) setError('');
+        if (exito) setExito('');
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setExito('');
 
         if (formData.password !== formData.confirmar_password) {
             setError('Las contraseñas no coinciden.');
@@ -66,14 +70,15 @@ export default function CrearCuenta() {
         };
 
         try {
-            // Verifica que esta ruta coincida con la que usas en GestionUsuarios.jsx
             await apiFetch('/usuarios/', {
                 method: 'POST',
                 body: JSON.stringify(payload)
             });
 
-            alert('Usuario registrado correctamente en el servidor.');
-            navigate('/gestion-usuarios');
+            setExito('Usuario registrado correctamente en el servidor. Redirigiendo a gestión de usuarios...');
+            setTimeout(() => {
+                navigate('/gestion-usuarios');
+            }, 900);
         } catch (err) {
             setError(err.message || 'No se pudo registrar el usuario.');
         } finally {
@@ -100,8 +105,15 @@ export default function CrearCuenta() {
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
+                    {exito && (
+                        <div className="alert alert-success rounded-3 mb-4" role="alert">
+                            <i className="bi bi-check-circle-fill me-2"></i>
+                            {exito}
+                        </div>
+                    )}
+
                     {error && (
-                        <div className="alert alert-danger rounded-3 mb-4">
+                        <div className="alert alert-danger rounded-3 mb-4" role="alert">
                             <strong>Error:</strong> {error}
                         </div>
                     )}
@@ -115,6 +127,7 @@ export default function CrearCuenta() {
                                     name="nombres"
                                     maxLength={100}
                                     required
+                                    disabled={guardando}
                                     value={formData.nombres}
                                     onChange={handleChange}
                                     className="form-control form-control-lg shadow-sm border-light bg-light"
@@ -128,6 +141,7 @@ export default function CrearCuenta() {
                                     name="apellidos"
                                     maxLength={100}
                                     required
+                                    disabled={guardando}
                                     value={formData.apellidos}
                                     onChange={handleChange}
                                     className="form-control form-control-lg shadow-sm border-light bg-light"
@@ -141,6 +155,7 @@ export default function CrearCuenta() {
                                     name="rut"
                                     maxLength={12}
                                     required
+                                    disabled={guardando}
                                     value={formData.rut}
                                     onChange={handleChange}
                                     className="form-control form-control-lg shadow-sm border-light bg-light"
@@ -154,6 +169,7 @@ export default function CrearCuenta() {
                                     name="telefono"
                                     maxLength={9}
                                     required
+                                    disabled={guardando}
                                     value={formData.telefono}
                                     onChange={handleChange}
                                     className="form-control form-control-lg shadow-sm border-light bg-light"
@@ -167,6 +183,7 @@ export default function CrearCuenta() {
                                     name="correo_electronico"
                                     maxLength={100}
                                     required
+                                    disabled={guardando}
                                     value={formData.correo_electronico}
                                     onChange={handleChange}
                                     className="form-control form-control-lg shadow-sm border-light bg-light"
@@ -180,6 +197,7 @@ export default function CrearCuenta() {
                                     name="usuario"
                                     maxLength={100}
                                     required
+                                    disabled={guardando}
                                     value={formData.usuario}
                                     onChange={handleChange}
                                     className="form-control form-control-lg shadow-sm border-light bg-light"
@@ -191,6 +209,7 @@ export default function CrearCuenta() {
                                 <select
                                     name="id_rol"
                                     required
+                                    disabled={guardando}
                                     value={formData.id_rol}
                                     onChange={handleChange}
                                     className="form-select form-select-lg shadow-sm border-light bg-light text-muted"
@@ -209,6 +228,7 @@ export default function CrearCuenta() {
                                     type="password"
                                     name="password"
                                     required
+                                    disabled={guardando}
                                     value={formData.password}
                                     onChange={handleChange}
                                     className="form-control form-control-lg shadow-sm border-light bg-light"
@@ -221,6 +241,7 @@ export default function CrearCuenta() {
                                     type="password"
                                     name="confirmar_password"
                                     required
+                                    disabled={guardando}
                                     value={formData.confirmar_password}
                                     onChange={handleChange}
                                     className="form-control form-control-lg shadow-sm border-light bg-light"

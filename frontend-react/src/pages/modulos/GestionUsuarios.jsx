@@ -16,6 +16,9 @@ export default function GestionUsuarios() {
     const [usuarios, setUsuarios] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
+    const [aviso, setAviso] = useState(null);
+    const [avisoModal, setAvisoModal] = useState(null);
+    const [guardando, setGuardando] = useState(false);
     const [busqueda, setBusqueda] = useState('');
     const [filtroRol, setFiltroRol] = useState('');
     const [usuarioEditando, setUsuarioEditando] = useState(null);
@@ -82,6 +85,8 @@ export default function GestionUsuarios() {
     });
 
     const handleAbrirEditar = (usr) => {
+        setAviso(null);
+        setAvisoModal(null);
         setUsuarioEditando({ ...usr, id_rol: String(usr.id_rol) });
     };
 
@@ -91,10 +96,12 @@ export default function GestionUsuarios() {
             ...prev,
             [name]: type === 'checkbox' ? checked : value
         }));
+        if (avisoModal) setAvisoModal(null);
     };
 
     const handleGuardarEdicion = async (e) => {
         e.preventDefault();
+        setAvisoModal(null);
 
         const payload = {
             id_usuario: usuarioEditando.id_usuario,
@@ -108,6 +115,7 @@ export default function GestionUsuarios() {
             activo: usuarioEditando.activo
         };
 
+        setGuardando(true);
         try {
             await apiFetch(`/usuarios/${payload.id_usuario}/`, {
                 method: 'PUT',
@@ -115,8 +123,17 @@ export default function GestionUsuarios() {
             });
             await cargarUsuarios();
             setUsuarioEditando(null);
+            setAviso({
+                tipo: 'success',
+                mensaje: `Usuario "${payload.nombres} ${payload.apellidos}" actualizado correctamente.`
+            });
         } catch (err) {
-            alert(`No se pudo actualizar el usuario: ${err?.message || 'Error en el servidor'}`);
+            setAvisoModal({
+                tipo: 'danger',
+                mensaje: `No se pudo actualizar el usuario: ${err?.message || 'Error en el servidor.'}`
+            });
+        } finally {
+            setGuardando(false);
         }
     };
 
@@ -126,14 +143,22 @@ export default function GestionUsuarios() {
         );
         if (!confirmar) return;
 
+        setAviso(null);
         try {
             await apiFetch(`/usuarios/${usr.id_usuario}/`, {
                 method: 'PATCH',
                 body: JSON.stringify({ activo: false })
             });
             await cargarUsuarios();
+            setAviso({
+                tipo: 'success',
+                mensaje: `Usuario "${usr.nombres} ${usr.apellidos}" desactivado correctamente.`
+            });
         } catch (err) {
-            alert(`No se pudo desactivar el usuario: ${err?.message || 'Error en el servidor'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo desactivar el usuario: ${err?.message || 'Error en el servidor.'}`
+            });
         }
     };
 
@@ -165,13 +190,42 @@ export default function GestionUsuarios() {
                         </div>
                     )}
 
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
+                        </div>
+                    )}
+
                     {/* Filtros */}
                     <div className="row g-3 mb-4">
                         <div className="col-12 col-md-8">
                             <input
                                 type="text"
                                 value={busqueda}
-                                onChange={(e) => setBusqueda(e.target.value)}
+                                onChange={(e) => {
+                                    setBusqueda(e.target.value);
+                                    if (aviso) setAviso(null);
+                                }}
                                 className="form-control bg-light border-light shadow-sm"
                                 placeholder="Buscar por nombre, apellido, RUT, usuario o correo..."
                             />
@@ -179,7 +233,10 @@ export default function GestionUsuarios() {
                         <div className="col-12 col-md-4">
                             <select
                                 value={filtroRol}
-                                onChange={(e) => setFiltroRol(e.target.value)}
+                                onChange={(e) => {
+                                    setFiltroRol(e.target.value);
+                                    if (aviso) setAviso(null);
+                                }}
                                 className="form-select bg-light border-light shadow-sm text-muted"
                             >
                                 <option value="">Todos los roles</option>
@@ -292,11 +349,27 @@ export default function GestionUsuarios() {
                                 <button
                                     type="button"
                                     className="btn-close btn-close-white"
+                                    disabled={guardando}
                                     onClick={() => setUsuarioEditando(null)}
                                 ></button>
                             </div>
                             <form onSubmit={handleGuardarEdicion}>
                                 <div className="modal-body p-4">
+                                    {avisoModal && (
+                                        <div
+                                            className={`alert alert-${avisoModal.tipo} alert-dismissible fade show rounded-3 mb-3 d-flex justify-content-between align-items-center`}
+                                            role="alert"
+                                        >
+                                            <span className="small">{avisoModal.mensaje}</span>
+                                            <button
+                                                type="button"
+                                                className="btn-close"
+                                                aria-label="Cerrar"
+                                                onClick={() => setAvisoModal(null)}
+                                            ></button>
+                                        </div>
+                                    )}
+
                                     <div className="row g-3">
                                         <div className="col-12 col-md-6">
                                             <label className="form-label fw-semibold text-muted small">Nombres</label>
@@ -305,6 +378,7 @@ export default function GestionUsuarios() {
                                                 name="nombres"
                                                 maxLength={100}
                                                 required
+                                                disabled={guardando}
                                                 value={usuarioEditando.nombres}
                                                 onChange={handleChangeEdicion}
                                                 className="form-control bg-light"
@@ -317,6 +391,7 @@ export default function GestionUsuarios() {
                                                 name="apellidos"
                                                 maxLength={100}
                                                 required
+                                                disabled={guardando}
                                                 value={usuarioEditando.apellidos}
                                                 onChange={handleChangeEdicion}
                                                 className="form-control bg-light"
@@ -329,6 +404,7 @@ export default function GestionUsuarios() {
                                                 name="rut"
                                                 maxLength={12}
                                                 required
+                                                disabled={guardando}
                                                 value={usuarioEditando.rut}
                                                 onChange={handleChangeEdicion}
                                                 className="form-control bg-light"
@@ -341,6 +417,7 @@ export default function GestionUsuarios() {
                                                 name="telefono"
                                                 maxLength={9}
                                                 required
+                                                disabled={guardando}
                                                 value={usuarioEditando.telefono}
                                                 onChange={handleChangeEdicion}
                                                 className="form-control bg-light"
@@ -353,6 +430,7 @@ export default function GestionUsuarios() {
                                                 name="correo_electronico"
                                                 maxLength={100}
                                                 required
+                                                disabled={guardando}
                                                 value={usuarioEditando.correo_electronico}
                                                 onChange={handleChangeEdicion}
                                                 className="form-control bg-light"
@@ -365,6 +443,7 @@ export default function GestionUsuarios() {
                                                 name="usuario"
                                                 maxLength={100}
                                                 required
+                                                disabled={guardando}
                                                 value={usuarioEditando.usuario}
                                                 onChange={handleChangeEdicion}
                                                 className="form-control bg-light"
@@ -375,6 +454,7 @@ export default function GestionUsuarios() {
                                             <select
                                                 name="id_rol"
                                                 required
+                                                disabled={guardando}
                                                 value={usuarioEditando.id_rol}
                                                 onChange={handleChangeEdicion}
                                                 className="form-select bg-light text-muted"
@@ -393,6 +473,7 @@ export default function GestionUsuarios() {
                                                     type="checkbox"
                                                     id="switchActivoUsuario"
                                                     name="activo"
+                                                    disabled={guardando}
                                                     checked={usuarioEditando.activo}
                                                     onChange={handleChangeEdicion}
                                                 />
@@ -406,6 +487,7 @@ export default function GestionUsuarios() {
                                 <div className="modal-footer px-4 py-3 bg-light">
                                     <button
                                         type="button"
+                                        disabled={guardando}
                                         className="btn btn-outline-secondary rounded-pill px-4"
                                         onClick={() => setUsuarioEditando(null)}
                                     >
@@ -413,10 +495,11 @@ export default function GestionUsuarios() {
                                     </button>
                                     <button
                                         type="submit"
+                                        disabled={guardando}
                                         className="btn text-white rounded-pill px-4 fw-semibold"
                                         style={{ backgroundColor: '#2b3d52' }}
                                     >
-                                        Guardar Cambios
+                                        {guardando ? 'Guardando...' : 'Guardar Cambios'}
                                     </button>
                                 </div>
                             </form>

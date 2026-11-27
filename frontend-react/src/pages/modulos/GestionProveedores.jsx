@@ -8,6 +8,8 @@ export default function GestionProveedores() {
     const [proveedores, setProveedores] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
+    const [aviso, setAviso] = useState(null);
+    const [avisoModal, setAvisoModal] = useState(null);
     const [busqueda, setBusqueda] = useState('');
     const [mostrarModal, setMostrarModal] = useState(false);
     const [modoEdicion, setModoEdicion] = useState(false);
@@ -65,12 +67,16 @@ export default function GestionProveedores() {
     });
 
     const handleAbrirNuevo = () => {
+        setAviso(null);
+        setAvisoModal(null);
         setModoEdicion(false);
         setFormData(estadoInicial);
         setMostrarModal(true);
     };
 
     const handleAbrirEditar = (proveedor) => {
+        setAviso(null);
+        setAvisoModal(null);
         setModoEdicion(true);
         setFormData({ ...proveedor });
         setMostrarModal(true);
@@ -82,10 +88,12 @@ export default function GestionProveedores() {
             ...prev,
             [name]: type === 'checkbox' ? checked : value
         }));
+        if (avisoModal) setAvisoModal(null);
     };
 
     const handleGuardar = async (e) => {
         e.preventDefault();
+        setAvisoModal(null);
 
         const payload = {
             razon_social: formData.razon_social.trim(),
@@ -111,8 +119,15 @@ export default function GestionProveedores() {
             }
             await cargarProveedores();
             setMostrarModal(false);
+            setAviso({
+                tipo: 'success',
+                mensaje: modoEdicion ? 'Proveedor actualizado correctamente.' : 'Proveedor registrado correctamente.'
+            });
         } catch (err) {
-            alert(`No se pudo guardar el proveedor: ${err?.message || 'Error en el servidor.'}`);
+            setAvisoModal({
+                tipo: 'danger',
+                mensaje: `No se pudo guardar el proveedor: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setGuardando(false);
         }
@@ -124,14 +139,22 @@ export default function GestionProveedores() {
         );
         if (!confirmar) return;
 
+        setAviso(null);
         try {
             await apiFetch(`/proveedores/${proveedor.id_proveedor}/`, {
                 method: 'PATCH',
                 body: JSON.stringify({ activo: false })
             });
             await cargarProveedores();
+            setAviso({
+                tipo: 'success',
+                mensaje: `Proveedor "${proveedor.razon_social}" desactivado correctamente.`
+            });
         } catch (err) {
-            alert(`No se pudo desactivar el proveedor: ${err?.message || 'Error en el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo desactivar el proveedor: ${err?.message || 'Error en el servidor.'}`
+            });
         }
     };
 
@@ -171,13 +194,42 @@ export default function GestionProveedores() {
                         </div>
                     )}
 
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
+                        </div>
+                    )}
+
                     {/* Buscador */}
                     <div className="row mb-4">
                         <div className="col-12 col-md-6">
                             <input
                                 type="text"
                                 value={busqueda}
-                                onChange={(e) => setBusqueda(e.target.value)}
+                                onChange={(e) => {
+                                    setBusqueda(e.target.value);
+                                    if (aviso) setAviso(null);
+                                }}
                                 className="form-control bg-light border-light shadow-sm"
                                 placeholder="Buscar por razón social, RUT, correo o dirección..."
                             />
@@ -280,6 +332,21 @@ export default function GestionProveedores() {
                             </div>
                             <form onSubmit={handleGuardar}>
                                 <div className="modal-body p-4">
+                                    {avisoModal && (
+                                        <div
+                                            className={`alert alert-${avisoModal.tipo} alert-dismissible fade show rounded-3 mb-3 d-flex justify-content-between align-items-center`}
+                                            role="alert"
+                                        >
+                                            <span className="small">{avisoModal.mensaje}</span>
+                                            <button
+                                                type="button"
+                                                className="btn-close"
+                                                aria-label="Cerrar"
+                                                onClick={() => setAvisoModal(null)}
+                                            ></button>
+                                        </div>
+                                    )}
+
                                     <div className="row g-3">
                                         <div className="col-12 col-md-7">
                                             <label className="form-label fw-semibold text-muted small">Razón Social</label>

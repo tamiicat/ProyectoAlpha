@@ -11,13 +11,14 @@ export default function GestionFacturas() {
     const [facturas, setFacturas] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
+    const [aviso, setAviso] = useState(null);
+    const [avisoModal, setAvisoModal] = useState(null);
     const [guardando, setGuardando] = useState(false);
 
     const [busqueda, setBusqueda] = useState('');
     const [facturaDetalle, setFacturaDetalle] = useState(null);
     const [mostrarModalNueva, setMostrarModalNueva] = useState(false);
 
-    // Estado del formulario para crear una nueva Factura
     const [nuevaFactura, setNuevaFactura] = useState({
         id_proveedor: '',
         id_ubicacion: '',
@@ -145,14 +146,19 @@ export default function GestionFacturas() {
         setIdArticuloActual(idArt);
         const art = articulos.find((a) => String(a.id_articulo) === String(idArt));
         setPrecioUnitarioActual(art ? String(art.precio) : '');
+        if (avisoModal) setAvisoModal(null);
     };
 
     const handleAgregarDetalle = () => {
+        setAvisoModal(null);
         const cantNum = parseInt(cantidadActual, 10);
         const precioNum = parseFloat(precioUnitarioActual);
 
         if (!idArticuloActual || !cantNum || cantNum <= 0 || isNaN(precioNum) || precioNum < 0) {
-            alert('Seleccione un artículo, una cantidad mayor a 0 y un precio unitario válido.');
+            setAvisoModal({
+                tipo: 'warning',
+                mensaje: 'Seleccione un artículo, una cantidad mayor a 0 y un precio unitario válido.'
+            });
             return;
         }
 
@@ -177,9 +183,9 @@ export default function GestionFacturas() {
 
     const handleQuitarDetalle = (id_detalle) => {
         setDetallesNuevos((prev) => prev.filter((item) => item.id_detalle !== id_detalle));
+        if (avisoModal) setAvisoModal(null);
     };
 
-    // Cálculos automáticos de Factura (monto_neto, iva 19%, monto_bruto)
     const montoNetoCalculado = detallesNuevos.reduce(
         (acc, item) => acc + item.cantidad * item.precio_unitario,
         0
@@ -189,9 +195,13 @@ export default function GestionFacturas() {
 
     const handleGuardarFactura = async (e) => {
         e.preventDefault();
+        setAvisoModal(null);
 
         if (detallesNuevos.length === 0) {
-            alert('Debe agregar al menos un artículo al detalle de la factura.');
+            setAvisoModal({
+                tipo: 'warning',
+                mensaje: 'Debe agregar al menos un artículo al detalle de la factura.'
+            });
             return;
         }
 
@@ -219,6 +229,8 @@ export default function GestionFacturas() {
             });
             await cargarFacturasYCatalogos();
             setMostrarModalNueva(false);
+            setAvisoModal(null);
+            setAviso({ tipo: 'success', mensaje: 'Factura registrada correctamente en el servidor.' });
             setNuevaFactura({
                 id_proveedor: '',
                 id_ubicacion: '',
@@ -228,7 +240,10 @@ export default function GestionFacturas() {
             });
             setDetallesNuevos([]);
         } catch (err) {
-            alert(`No se pudo registrar la factura: ${err?.message || 'Error en el servidor.'}`);
+            setAvisoModal({
+                tipo: 'danger',
+                mensaje: `No se pudo registrar la factura: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setGuardando(false);
         }
@@ -248,7 +263,10 @@ export default function GestionFacturas() {
                     <div className="d-flex gap-2">
                         <button
                             type="button"
-                            onClick={() => setMostrarModalNueva(true)}
+                            onClick={() => {
+                                setAvisoModal(null);
+                                setMostrarModalNueva(true);
+                            }}
                             className="btn btn-light rounded-pill px-4 fw-semibold d-flex align-items-center gap-2"
                             style={{ color: '#2b3d52' }}
                         >
@@ -270,13 +288,41 @@ export default function GestionFacturas() {
                         </div>
                     )}
 
-                    {/* Buscador */}
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
+                        </div>
+                    )}
+
                     <div className="row mb-4">
                         <div className="col-12 col-md-6">
                             <input
                                 type="text"
                                 value={busqueda}
-                                onChange={(e) => setBusqueda(e.target.value)}
+                                onChange={(e) => {
+                                    setBusqueda(e.target.value);
+                                    if (aviso) setAviso(null);
+                                }}
                                 className="form-control bg-light border-light shadow-sm"
                                 placeholder="Buscar por N° de factura, proveedor o bodega..."
                             />
@@ -344,7 +390,6 @@ export default function GestionFacturas() {
                 </div>
             </div>
 
-            {/* Modal para ver Detalle_Factura */}
             {facturaDetalle && (
                 <div className="modal d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                     <div className="modal-dialog modal-lg modal-dialog-centered">
@@ -421,7 +466,6 @@ export default function GestionFacturas() {
                 </div>
             )}
 
-            {/* Modal para registrar Nueva Factura */}
             {mostrarModalNueva && (
                 <div className="modal d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                     <div className="modal-dialog modal-lg modal-dialog-centered">
@@ -436,6 +480,21 @@ export default function GestionFacturas() {
                             </div>
                             <form onSubmit={handleGuardarFactura}>
                                 <div className="modal-body p-4">
+                                    {avisoModal && (
+                                        <div
+                                            className={`alert alert-${avisoModal.tipo} alert-dismissible fade show rounded-3 mb-3 d-flex justify-content-between align-items-center`}
+                                            role="alert"
+                                        >
+                                            <span className="small">{avisoModal.mensaje}</span>
+                                            <button
+                                                type="button"
+                                                className="btn-close"
+                                                aria-label="Cerrar"
+                                                onClick={() => setAvisoModal(null)}
+                                            ></button>
+                                        </div>
+                                    )}
+
                                     <div className="row g-3 mb-4">
                                         <div className="col-12 col-md-4">
                                             <label className="form-label fw-semibold text-muted small">N° Factura</label>
@@ -504,7 +563,6 @@ export default function GestionFacturas() {
                                         </div>
                                     </div>
 
-                                    {/* Detalle_Factura (1 a N) */}
                                     <div className="p-3 rounded-3 bg-light border mb-3">
                                         <h6 className="fw-bold small text-uppercase text-muted mb-3">Artículos de la Factura</h6>
                                         <div className="row g-2 align-items-end">
@@ -527,7 +585,10 @@ export default function GestionFacturas() {
                                                     type="number"
                                                     min="1"
                                                     value={cantidadActual}
-                                                    onChange={(e) => setCantidadActual(e.target.value)}
+                                                    onChange={(e) => {
+                                                        setCantidadActual(e.target.value);
+                                                        if (avisoModal) setAvisoModal(null);
+                                                    }}
                                                     className="form-control bg-white"
                                                     placeholder="Cant."
                                                 />
@@ -538,7 +599,10 @@ export default function GestionFacturas() {
                                                     min="0"
                                                     step="0.01"
                                                     value={precioUnitarioActual}
-                                                    onChange={(e) => setPrecioUnitarioActual(e.target.value)}
+                                                    onChange={(e) => {
+                                                        setPrecioUnitarioActual(e.target.value);
+                                                        if (avisoModal) setAvisoModal(null);
+                                                    }}
                                                     className="form-control bg-white"
                                                     placeholder="Precio Unit."
                                                 />
@@ -575,7 +639,6 @@ export default function GestionFacturas() {
                                         )}
                                     </div>
 
-                                    {/* Totales calculados */}
                                     <div className="d-flex justify-content-end">
                                         <div className="text-end small">
                                             <div>Monto Neto: <strong>{formatearCLP(montoNetoCalculado)}</strong></div>

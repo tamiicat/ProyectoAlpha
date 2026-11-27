@@ -10,6 +10,7 @@ export default function Diagnostico() {
     const [reportes, setReportes] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
+    const [aviso, setAviso] = useState(null);
     const [enviando, setEnviando] = useState(false);
 
     const obtenerFechaHoraActual = () => {
@@ -110,10 +111,12 @@ export default function Diagnostico() {
             ...prev,
             [name]: value
         }));
+        if (aviso) setAviso(null);
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setAviso(null);
 
         const payload = {
             id_obra: Number(formData.id_obra),
@@ -129,7 +132,6 @@ export default function Diagnostico() {
                 body: JSON.stringify(payload)
             });
 
-            alert('Reporte técnico registrado correctamente en el servidor.');
             setFormData({
                 id_obra: '',
                 id_usuario: '',
@@ -137,8 +139,15 @@ export default function Diagnostico() {
                 observaciones: ''
             });
             await cargarDatos();
+            setAviso({
+                tipo: 'success',
+                mensaje: 'Reporte técnico registrado correctamente en el servidor.'
+            });
         } catch (err) {
-            alert(`No se pudo registrar el diagnóstico: ${err?.message || 'Error en el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo registrar el diagnóstico: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setEnviando(false);
         }
@@ -169,6 +178,32 @@ export default function Diagnostico() {
                             <button type="button" onClick={cargarDatos} className="btn btn-sm btn-outline-danger ms-3">
                                 Reintentar
                             </button>
+                        </div>
+                    )}
+
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
                         </div>
                     )}
 
