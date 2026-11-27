@@ -55,6 +55,7 @@ urlpatterns = [
     path("api/v1/autorizaciones/", api_autorizaciones, name="api_autorizaciones"),
     path("api/v1/movimientos/orquestar/", api_orquestar_movimiento, name="movimientos_orquestar"),
     path("api/v1/sync/batch/", api_sincronizar_offline, name="sync_batch"),
+    path("api/v1/usuarios/<int:id_usuario>/", api_usuario_detalle, name="api_usuario_detalle"),
     # Nuevas rutas para Usuarios, Cardex y Solicitudes
     path("api/v1/usuarios/", api_usuarios, name="api_usuarios"),
     path("api/v1/cardex/", api_cardex, name="api_cardex"),

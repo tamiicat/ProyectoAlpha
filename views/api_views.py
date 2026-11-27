@@ -1848,6 +1848,124 @@ def api_despachos(request: Any) -> JsonResponse:
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
 
+@csrf_exempt
+def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
+    """PUT/PATCH/DELETE /api/v1/usuarios/<id_usuario>/ -> actualiza o desactiva usuario."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    if request.method in ("PUT", "PATCH"):
+        if "U" not in RBAC_MATRIX.get(role, {}).get("usuarios_roles", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'usuarios_roles' (U)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        campos_sql: list[str] = []
+        valores_sql: list[Any] = []
+
+        if "nombres" in data or "nombre" in data:
+            val = sanitize_text_input(str(data.get("nombres", data.get("nombre", ""))).strip())
+            if val:
+                campos_sql.append("nombres = %s")
+                valores_sql.append(val[:100])
+
+        if "apellidos" in data:
+            val = sanitize_text_input(str(data.get("apellidos", "")).strip())
+            campos_sql.append("apellidos = %s")
+            valores_sql.append(val[:100])
+
+        if "rut" in data:
+            val = sanitize_text_input(str(data.get("rut", "")).strip())
+            campos_sql.append("rut = %s")
+            valores_sql.append(val[:12])
+
+        if "correo_electronico" in data or "email" in data or "correo" in data:
+            val = sanitize_text_input(
+                str(data.get("correo_electronico", data.get("email", data.get("correo", "")))).strip()
+            )
+            if val:
+                campos_sql.append("correo_electronico = %s")
+                valores_sql.append(val[:100])
+
+        if "telefono" in data:
+            val = sanitize_text_input(str(data.get("telefono", "")).strip())
+            campos_sql.append("telefono = %s")
+            valores_sql.append(val[:9])
+
+        if "username" in data or "usuario" in data:
+            val = sanitize_text_input(str(data.get("username", data.get("usuario", ""))).strip())
+            if val:
+                campos_sql.append("usuario = %s")
+                valores_sql.append(val[:100])
+
+        if "activo" in data:
+            campos_sql.append("activo = %s")
+            valores_sql.append(bool(data.get("activo")))
+
+        rol_nombre = None
+        if "rol" in data or "role" in data:
+            rol_nombre = sanitize_text_input(str(data.get("rol", data.get("role", ""))).strip()).upper()
+
+        try:
+            with connection.cursor() as cursor:
+                if rol_nombre:
+                    cursor.execute(
+                        "SELECT id_rol FROM rol WHERE UPPER(nombre) = %s AND activo = TRUE LIMIT 1;",
+                        [rol_nombre],
+                    )
+                    row_rol = cursor.fetchone()
+                    if row_rol and row_rol[0] is not None:
+                        campos_sql.append("id_rol = %s")
+                        valores_sql.append(int(row_rol[0]))
+
+                if campos_sql:
+                    valores_sql.append(id_usuario)
+                    cursor.execute(
+                        f"UPDATE usuario SET {', '.join(campos_sql)} WHERE id_usuario = %s;",
+                        valores_sql,
+                    )
+                    if cursor.rowcount == 0:
+                        return JsonResponse({"error": "Usuario no encontrado."}, status=404)
+        except Exception as exc:
+            return JsonResponse({"error": f"Error al actualizar usuario: {exc}"}, status=500)
+
+        return JsonResponse(
+            {"id_usuario": id_usuario, "mensaje": "Usuario actualizado correctamente."},
+            status=200,
+        )
+
+    if request.method == "DELETE":
+        if "D" not in RBAC_MATRIX.get(role, {}).get("usuarios_roles", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'usuarios_roles' (D)."},
+                status=403,
+            )
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE usuario SET activo = FALSE WHERE id_usuario = %s;",
+                    [id_usuario],
+                )
+                if cursor.rowcount == 0:
+                    return JsonResponse({"error": "Usuario no encontrado."}, status=404)
+        except Exception as exc:
+            return JsonResponse({"error": f"Error al desactivar usuario: {exc}"}, status=500)
+
+        return JsonResponse(
+            {"id_usuario": id_usuario, "activo": False, "mensaje": "Usuario desactivado."},
+            status=200,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
 
 @csrf_exempt
 @require_rbac("inventario_bodega", "U")
