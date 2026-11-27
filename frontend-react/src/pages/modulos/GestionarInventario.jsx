@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../services/api';
 
@@ -9,6 +9,19 @@ export default function GestionarInventario() {
     const [ubicaciones, setUbicaciones] = useState([]);
     const [cargandoCatalogos, setCargandoCatalogos] = useState(true);
     const [errorCatalogos, setErrorCatalogos] = useState('');
+
+    // Estados para crear Categoría rápido
+    const [mostrarNuevaCat, setMostrarNuevaCat] = useState(false);
+    const [nuevaCatNombre, setNuevaCatNombre] = useState('');
+    const [creandoCat, setCreandoCat] = useState(false);
+    const [errorCat, setErrorCat] = useState('');
+
+    // Estados para crear Ubicación rápido
+    const [mostrarNuevaUb, setMostrarNuevaUb] = useState(false);
+    const [nuevaUbBodega, setNuevaUbBodega] = useState('');
+    const [nuevaUbDetalle, setNuevaUbDetalle] = useState('');
+    const [creandoUb, setCreandoUb] = useState(false);
+    const [errorUb, setErrorUb] = useState('');
 
     const [formData, setFormData] = useState({
         nombre: '',
@@ -25,55 +38,55 @@ export default function GestionarInventario() {
     const [guardando, setGuardando] = useState(false);
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        const cargarCatalogos = async () => {
-            setCargandoCatalogos(true);
-            setErrorCatalogos('');
-            try {
-                const [resCat, resUb] = await Promise.allSettled([
-                    apiFetch('/categorias/'),
-                    apiFetch('/ubicaciones/')
-                ]);
+    const cargarCatalogos = useCallback(async () => {
+        setCargandoCatalogos(true);
+        setErrorCatalogos('');
+        try {
+            const [resCat, resUb] = await Promise.allSettled([
+                apiFetch('/categorias/'),
+                apiFetch('/ubicaciones/')
+            ]);
 
-                if (resCat.status === 'fulfilled') {
-                    const rawCat = resCat.value;
-                    const listaCat = Array.isArray(rawCat) ? rawCat : (rawCat.categorias || rawCat.results || []);
-                    setCategorias(
-                        listaCat.map((cat, idx) => ({
-                            id_categoria: cat.id_categoria ?? cat.id ?? idx + 1,
-                            nombre: cat.nombre ?? cat.categoria ?? `Categoría #${idx + 1}`
-                        }))
-                    );
-                } else {
-                    setCategorias([]);
-                    setErrorCatalogos((prev) => prev || resCat.reason?.message || 'No se pudieron cargar las categorías desde el servidor.');
-                }
-
-                if (resUb.status === 'fulfilled') {
-                    const rawUb = resUb.value;
-                    const listaUb = Array.isArray(rawUb) ? rawUb : (rawUb.ubicaciones || rawUb.results || []);
-                    setUbicaciones(
-                        listaUb.map((ub, idx) => ({
-                            id_ubicacion: ub.id_ubicacion ?? ub.id ?? idx + 1,
-                            bodega: ub.bodega ?? ub.nombre ?? 'Bodega',
-                            detalle: ub.detalle ?? ub.descripcion ?? ''
-                        }))
-                    );
-                } else {
-                    setUbicaciones([]);
-                    setErrorCatalogos((prev) => prev || resUb.reason?.message || 'No se pudieron cargar las ubicaciones desde el servidor.');
-                }
-            } catch (err) {
+            if (resCat.status === 'fulfilled') {
+                const rawCat = resCat.value;
+                const listaCat = Array.isArray(rawCat) ? rawCat : (rawCat.categorias || rawCat.results || []);
+                setCategorias(
+                    listaCat.map((cat, idx) => ({
+                        id_categoria: cat.id_categoria ?? cat.id ?? idx + 1,
+                        nombre: cat.nombre ?? cat.categoria ?? `Categoría #${idx + 1}`
+                    }))
+                );
+            } else {
                 setCategorias([]);
-                setUbicaciones([]);
-                setErrorCatalogos(err?.message || 'Error al cargar catálogos desde el servidor.');
-            } finally {
-                setCargandoCatalogos(false);
+                setErrorCatalogos((prev) => prev || resCat.reason?.message || 'No se pudieron cargar las categorías desde el servidor.');
             }
-        };
 
-        cargarCatalogos();
+            if (resUb.status === 'fulfilled') {
+                const rawUb = resUb.value;
+                const listaUb = Array.isArray(rawUb) ? rawUb : (rawUb.ubicaciones || rawUb.results || []);
+                setUbicaciones(
+                    listaUb.map((ub, idx) => ({
+                        id_ubicacion: ub.id_ubicacion ?? ub.id ?? idx + 1,
+                        bodega: ub.bodega ?? ub.nombre ?? 'Bodega',
+                        detalle: ub.detalle ?? ub.descripcion ?? ''
+                    }))
+                );
+            } else {
+                setUbicaciones([]);
+                setErrorCatalogos((prev) => prev || resUb.reason?.message || 'No se pudieron cargar las ubicaciones desde el servidor.');
+            }
+        } catch (err) {
+            setCategorias([]);
+            setUbicaciones([]);
+            setErrorCatalogos(err?.message || 'Error al cargar catálogos desde el servidor.');
+        } finally {
+            setCargandoCatalogos(false);
+        }
     }, []);
+
+    useEffect(() => {
+        cargarCatalogos();
+    }, [cargarCatalogos]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -81,6 +94,74 @@ export default function GestionarInventario() {
             ...prev,
             [name]: value
         }));
+    };
+
+    const handleCrearCategoria = async () => {
+        const nombreLimpio = nuevaCatNombre.trim();
+        if (!nombreLimpio) {
+            setErrorCat('Ingresa un nombre para la categoría.');
+            return;
+        }
+
+        setCreandoCat(true);
+        setErrorCat('');
+        try {
+            const creada = await apiFetch('/categorias/', {
+                method: 'POST',
+                body: JSON.stringify({ nombre: nombreLimpio })
+            });
+
+            await cargarCatalogos();
+
+            const nuevoId = creada?.id_categoria ?? creada?.id;
+            if (nuevoId) {
+                setFormData((prev) => ({ ...prev, id_categoria: String(nuevoId) }));
+            }
+
+            setNuevaCatNombre('');
+            setMostrarNuevaCat(false);
+        } catch (err) {
+            setErrorCat(err?.message || 'No se pudo crear la categoría.');
+        } finally {
+            setCreandoCat(false);
+        }
+    };
+
+    const handleCrearUbicacion = async () => {
+        const bodegaLimpia = nuevaUbBodega.trim();
+        const detalleLimpio = nuevaUbDetalle.trim();
+
+        if (!bodegaLimpia) {
+            setErrorUb('Ingresa el nombre de la bodega.');
+            return;
+        }
+
+        setCreandoUb(true);
+        setErrorUb('');
+        try {
+            const creada = await apiFetch('/ubicaciones/', {
+                method: 'POST',
+                body: JSON.stringify({
+                    bodega: bodegaLimpia,
+                    detalle: detalleLimpio
+                })
+            });
+
+            await cargarCatalogos();
+
+            const nuevoId = creada?.id_ubicacion ?? creada?.id;
+            if (nuevoId) {
+                setFormData((prev) => ({ ...prev, id_ubicacion: String(nuevoId) }));
+            }
+
+            setNuevaUbBodega('');
+            setNuevaUbDetalle('');
+            setMostrarNuevaUb(false);
+        } catch (err) {
+            setErrorUb(err?.message || 'No se pudo crear la ubicación.');
+        } finally {
+            setCreandoUb(false);
+        }
     };
 
     const handleSubmit = async (e) => {
@@ -194,46 +275,139 @@ export default function GestionarInventario() {
                                 </div>
                             </div>
 
+                            {/* Categoría + botón crear */}
                             <div className="col-12 col-md-6">
                                 <label className="form-label fw-semibold text-muted small">Categoría</label>
-                                <select
-                                    name="id_categoria"
-                                    required
-                                    disabled={cargandoCatalogos || guardando}
-                                    value={formData.id_categoria}
-                                    onChange={handleChange}
-                                    className="form-select form-select-lg shadow-sm border-light bg-light text-muted"
-                                >
-                                    <option value="">
-                                        {cargandoCatalogos ? 'Cargando categorías...' : 'Seleccione una categoría...'}
-                                    </option>
-                                    {categorias.map((cat) => (
-                                        <option key={cat.id_categoria} value={cat.id_categoria}>
-                                            {cat.nombre}
+                                <div className="input-group input-group-lg shadow-sm">
+                                    <select
+                                        name="id_categoria"
+                                        required
+                                        disabled={cargandoCatalogos || guardando}
+                                        value={formData.id_categoria}
+                                        onChange={handleChange}
+                                        className="form-select border-light bg-light text-muted"
+                                    >
+                                        <option value="">
+                                            {cargandoCatalogos ? 'Cargando categorías...' : 'Seleccione una categoría...'}
                                         </option>
-                                    ))}
-                                </select>
+                                        {categorias.map((cat) => (
+                                            <option key={cat.id_categoria} value={cat.id_categoria}>
+                                                {cat.nombre}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMostrarNuevaCat((prev) => !prev);
+                                            setErrorCat('');
+                                        }}
+                                        className="btn btn-outline-primary px-3"
+                                        title="Crear nueva categoría"
+                                    >
+                                        <i className={`bi ${mostrarNuevaCat ? 'bi-x-lg' : 'bi-plus-lg'}`}></i>
+                                    </button>
+                                </div>
+
+                                {mostrarNuevaCat && (
+                                    <div className="mt-2 p-3 rounded-3 border bg-light">
+                                        <div className="small fw-semibold text-dark mb-2">Nueva Categoría</div>
+                                        {errorCat && <div className="text-danger small mb-2">{errorCat}</div>}
+                                        <div className="d-flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={nuevaCatNombre}
+                                                onChange={(e) => setNuevaCatNombre(e.target.value)}
+                                                className="form-control form-control-sm"
+                                                placeholder="Ej: Climatización"
+                                                maxLength={100}
+                                                disabled={creandoCat}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleCrearCategoria}
+                                                disabled={creandoCat}
+                                                className="btn btn-sm text-white px-3"
+                                                style={{ backgroundColor: '#2b3d52' }}
+                                            >
+                                                {creandoCat ? '...' : 'Crear'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
+                            {/* Ubicación + botón crear */}
                             <div className="col-12 col-md-6">
                                 <label className="form-label fw-semibold text-muted small">Ubicación (Bodega / Detalle)</label>
-                                <select
-                                    name="id_ubicacion"
-                                    required
-                                    disabled={cargandoCatalogos || guardando}
-                                    value={formData.id_ubicacion}
-                                    onChange={handleChange}
-                                    className="form-select form-select-lg shadow-sm border-light bg-light text-muted"
-                                >
-                                    <option value="">
-                                        {cargandoCatalogos ? 'Cargando ubicaciones...' : 'Seleccione una ubicación...'}
-                                    </option>
-                                    {ubicaciones.map((ub) => (
-                                        <option key={ub.id_ubicacion} value={ub.id_ubicacion}>
-                                            {ub.bodega}{ub.detalle ? ` - ${ub.detalle}` : ''}
+                                <div className="input-group input-group-lg shadow-sm">
+                                    <select
+                                        name="id_ubicacion"
+                                        required
+                                        disabled={cargandoCatalogos || guardando}
+                                        value={formData.id_ubicacion}
+                                        onChange={handleChange}
+                                        className="form-select border-light bg-light text-muted"
+                                    >
+                                        <option value="">
+                                            {cargandoCatalogos ? 'Cargando ubicaciones...' : 'Seleccione una ubicación...'}
                                         </option>
-                                    ))}
-                                </select>
+                                        {ubicaciones.map((ub) => (
+                                            <option key={ub.id_ubicacion} value={ub.id_ubicacion}>
+                                                {ub.bodega}{ub.detalle ? ` - ${ub.detalle}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMostrarNuevaUb((prev) => !prev);
+                                            setErrorUb('');
+                                        }}
+                                        className="btn btn-outline-primary px-3"
+                                        title="Crear nueva ubicación"
+                                    >
+                                        <i className={`bi ${mostrarNuevaUb ? 'bi-x-lg' : 'bi-plus-lg'}`}></i>
+                                    </button>
+                                </div>
+
+                                {mostrarNuevaUb && (
+                                    <div className="mt-2 p-3 rounded-3 border bg-light">
+                                        <div className="small fw-semibold text-dark mb-2">Nueva Ubicación</div>
+                                        {errorUb && <div className="text-danger small mb-2">{errorUb}</div>}
+                                        <div className="d-flex flex-column gap-2">
+                                            <input
+                                                type="text"
+                                                value={nuevaUbBodega}
+                                                onChange={(e) => setNuevaUbBodega(e.target.value)}
+                                                className="form-control form-control-sm"
+                                                placeholder="Bodega (Ej: Bodega Central)"
+                                                maxLength={100}
+                                                disabled={creandoUb}
+                                            />
+                                            <div className="d-flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={nuevaUbDetalle}
+                                                    onChange={(e) => setNuevaUbDetalle(e.target.value)}
+                                                    className="form-control form-control-sm"
+                                                    placeholder="Detalle / Pasillo (opcional)"
+                                                    maxLength={150}
+                                                    disabled={creandoUb}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleCrearUbicacion}
+                                                    disabled={creandoUb}
+                                                    className="btn btn-sm text-white px-3"
+                                                    style={{ backgroundColor: '#2b3d52' }}
+                                                >
+                                                    {creandoUb ? '...' : 'Crear'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="col-12 col-md-6">
