@@ -47,7 +47,7 @@ def _columnas_tabla_pg(nombre_tabla: str) -> set[str]:
 
 
 def _resolver_id_usuario_despacho(request: Any) -> int | None:
-    """Resuelve id_usuario desde JWT, request.user o primer usuario en BD."""
+    """Resuelve id_usuario desde JWT, request.user o primer usuario activo en BD."""
     jwt_payload = getattr(request, "jwt_payload", {}) or {}
     for clave in ("id_usuario", "user_id", "sub"):
         val = jwt_payload.get(clave)
@@ -66,7 +66,9 @@ def _resolver_id_usuario_despacho(request: Any) -> int | None:
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id_usuario FROM usuario ORDER BY id_usuario ASC LIMIT 1;")
+            cursor.execute(
+                "SELECT id_usuario FROM usuario WHERE activo = TRUE ORDER BY id_usuario ASC LIMIT 1;"
+            )
             row = cursor.fetchone()
             if row and row[0] is not None:
                 return int(row[0])
@@ -1062,7 +1064,9 @@ def api_facturas(request: Any) -> JsonResponse:
         try:
             with connection.cursor() as cursor:
                 if id_usuario is None:
-                    cursor.execute("SELECT id_usuario FROM usuario ORDER BY id_usuario ASC LIMIT 1;")
+                    cursor.execute(
+                        "SELECT id_usuario FROM usuario WHERE activo = TRUE ORDER BY id_usuario ASC LIMIT 1;"
+                    )
                     row_usr = cursor.fetchone()
                     if row_usr and row_usr[0] is not None:
                         id_usuario = int(row_usr[0])
@@ -1891,6 +1895,8 @@ def api_obra_observaciones(request: Any, id_obra: int) -> JsonResponse:
         return JsonResponse({"id_obra": id_obra, "observacion": obs}, status=201)
     except Exception as exc:
         return JsonResponse({"error": f"Error al guardar observación: {exc}"}, status=500)
+
+
 @csrf_exempt
 @require_rbac("inventario_bodega", "R")
 def api_despachos(request: Any) -> JsonResponse:
@@ -2045,6 +2051,7 @@ def api_despachos(request: Any) -> JsonResponse:
         )
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
+
 
 @csrf_exempt
 def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
@@ -2219,6 +2226,7 @@ def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
         )
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
+
 
 @csrf_exempt
 @require_rbac("inventario_bodega", "U")
@@ -2567,4 +2575,3 @@ def api_reportes(request: Any) -> JsonResponse:
             return JsonResponse({"error": f"Error PostgreSQL al guardar diagnóstico: {exc}"}, status=500)
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
-
