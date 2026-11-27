@@ -463,6 +463,189 @@ def api_proveedores(request: Any) -> JsonResponse:
 
 
 @csrf_exempt
+def api_clientes(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/clientes/ -> lista o registra clientes."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    if request.method == "GET":
+        modulo_ok = (
+            "R" in RBAC_MATRIX.get(role, {}).get("obras_mantencion", set())
+            or "R" in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set())
+        )
+        if not modulo_ok:
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en clientes (R)."},
+                status=403,
+            )
+
+        q = sanitize_text_input(str(request.GET.get("q", "")).strip()).lower()
+        clientes: list[dict[str, Any]] = []
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        id_cliente,
+                        nombres,
+                        apellidos,
+                        rut,
+                        correo_electronico,
+                        telefono,
+                        direccion,
+                        activo
+                    FROM cliente
+                    ORDER BY id_cliente ASC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    nombres_val = row[1] or ""
+                    apellidos_val = row[2] or ""
+                    nombre_completo = f"{nombres_val} {apellidos_val}".strip()
+                    activo_bool = bool(row[7]) if row[7] is not None else True
+                    item = {
+                        "id": row[0],
+                        "id_cliente": row[0],
+                        "nombres": nombres_val,
+                        "apellidos": apellidos_val,
+                        "nombre_razon_social": nombre_completo,
+                        "razon_social": nombre_completo,
+                        "nombre": nombre_completo,
+                        "rut": row[3] or "",
+                        "correo_electronico": row[4] or "",
+                        "correo": row[4] or "",
+                        "email": row[4] or "",
+                        "telefono": row[5] or "",
+                        "direccion": row[6] or "",
+                        "activo": activo_bool,
+                        "estado": "Activo" if activo_bool else "Inactivo",
+                    }
+                    if not q or any(
+                        q in str(item[campo]).lower()
+                        for campo in (
+                            "nombres",
+                            "apellidos",
+                            "nombre_razon_social",
+                            "rut",
+                            "correo_electronico",
+                            "telefono",
+                            "direccion",
+                        )
+                    ):
+                        clientes.append(item)
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al consultar clientes en BD: {exc}"}, status=500
+            )
+
+        return JsonResponse(
+            {"clientes": clientes, "total": len(clientes)}, status=200
+        )
+
+    if request.method == "POST":
+        modulo_ok = (
+            "C" in RBAC_MATRIX.get(role, {}).get("obras_mantencion", set())
+            or "C" in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set())
+        )
+        if not modulo_ok:
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en clientes (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        nombres_raw = sanitize_text_input(
+            str(
+                data.get(
+                    "nombres",
+                    data.get(
+                        "nombre_razon_social",
+                        data.get("razon_social", data.get("nombre", "")),
+                    ),
+                )
+            ).strip()
+        )
+        apellidos_raw = sanitize_text_input(str(data.get("apellidos", "")).strip())
+
+        if not apellidos_raw and " " in nombres_raw:
+            partes = nombres_raw.split(" ", 1)
+            nombres = partes[0].strip()
+            apellidos = partes[1].strip()
+        else:
+            nombres = nombres_raw
+            apellidos = apellidos_raw or "-"
+
+        rut = sanitize_text_input(str(data.get("rut", "")).strip())
+        correo = sanitize_text_input(
+            str(
+                data.get("correo_electronico", data.get("correo", data.get("email", "")))
+            ).strip()
+        )
+        telefono = sanitize_text_input(str(data.get("telefono", "")).strip())
+        direccion = sanitize_text_input(str(data.get("direccion", "")).strip())
+
+        if not nombres or not rut:
+            return JsonResponse(
+                {"error": "Nombre/Razón social y RUT son obligatorios."}, status=400
+            )
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO cliente (
+                        nombres, apellidos, rut, correo_electronico, telefono, direccion, activo
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                    RETURNING id_cliente;
+                    """,
+                    [
+                        nombres[:100],
+                        apellidos[:100],
+                        rut[:20],
+                        correo[:120],
+                        telefono[:30],
+                        direccion[:200],
+                    ],
+                )
+                id_cliente_bd = int(cursor.fetchone()[0])
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al guardar cliente en BD: {exc}"}, status=500
+            )
+
+        nombre_completo = f"{nombres} {apellidos}".strip()
+        nuevo_cliente = {
+            "id": id_cliente_bd,
+            "id_cliente": id_cliente_bd,
+            "nombres": nombres,
+            "apellidos": apellidos,
+            "nombre_razon_social": nombre_completo,
+            "razon_social": nombre_completo,
+            "nombre": nombre_completo,
+            "rut": rut,
+            "correo_electronico": correo,
+            "correo": correo,
+            "telefono": telefono,
+            "direccion": direccion,
+            "activo": True,
+            "estado": "Activo",
+        }
+        return JsonResponse(
+            {"cliente": nuevo_cliente, "mensaje": "Cliente registrado correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
+
+@csrf_exempt
 @require_rbac("inventario_bodega", "C")
 def api_orquestar_movimiento(request: Any) -> JsonResponse:
     """POST /api/v1/movimientos/orquestar/ -> actualiza stock, cardex y telemetría."""
