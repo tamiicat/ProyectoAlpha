@@ -9,6 +9,7 @@ export default function SolicitarArticulo() {
     const [articulos, setArticulos] = useState([]);
     const [solicitudesRecientes, setSolicitudesRecientes] = useState([]);
     const [errorCarga, setErrorCarga] = useState('');
+    const [aviso, setAviso] = useState(null);
     const [enviando, setEnviando] = useState(false);
 
     // Estado de la cabecera
@@ -66,14 +67,15 @@ export default function SolicitarArticulo() {
     }, []);
 
     const handleAgregarArticulo = () => {
+        setAviso(null);
         if (!idArticuloActual) {
-            alert('Seleccione un artículo.');
+            setAviso({ tipo: 'warning', mensaje: 'Seleccione un artículo.' });
             return;
         }
 
         const cantNum = parseInt(cantidadActual, 10);
         if (!cantNum || cantNum <= 0) {
-            alert('Ingrese una cantidad válida mayor a 0.');
+            setAviso({ tipo: 'warning', mensaje: 'Ingrese una cantidad válida mayor a 0.' });
             return;
         }
 
@@ -110,18 +112,20 @@ export default function SolicitarArticulo() {
 
     const handleQuitarArticulo = (id_articulo) => {
         setDetalles((prev) => prev.filter((item) => item.id_articulo !== id_articulo));
+        if (aviso) setAviso(null);
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setAviso(null);
 
         if (!idObra) {
-            alert('Debe seleccionar una obra de destino.');
+            setAviso({ tipo: 'warning', mensaje: 'Debe seleccionar una obra de destino.' });
             return;
         }
 
         if (detalles.length === 0) {
-            alert('Debe agregar al menos un artículo a la solicitud.');
+            setAviso({ tipo: 'warning', mensaje: 'Debe agregar al menos un artículo a la solicitud.' });
             return;
         }
 
@@ -147,13 +151,16 @@ export default function SolicitarArticulo() {
                 setSolicitudesRecientes((prev) => [...respuestas, ...prev]);
             }
 
-            alert('Solicitud enviada correctamente al servidor.');
+            setAviso({ tipo: 'success', mensaje: 'Solicitud enviada correctamente al servidor.' });
             setIdObra('');
             setComentarios('');
             setDetalles([]);
         } catch (err) {
             console.error('Error al enviar solicitud al backend:', err.message);
-            alert(`Error al enviar la solicitud: ${err?.message || 'No se pudo comunicar con el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `Error al enviar la solicitud: ${err?.message || 'No se pudo comunicar con el servidor.'}`
+            });
         } finally {
             setEnviando(false);
         }
@@ -184,6 +191,32 @@ export default function SolicitarArticulo() {
                         </div>
                     )}
 
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
+                        </div>
+                    )}
+
                     <form onSubmit={handleSubmit}>
                         {/* Cabecera de la Solicitud: Obra destino */}
                         <div className="row g-4 mb-4">
@@ -193,7 +226,10 @@ export default function SolicitarArticulo() {
                                     required
                                     disabled={enviando}
                                     value={idObra}
-                                    onChange={(e) => setIdObra(e.target.value)}
+                                    onChange={(e) => {
+                                        setIdObra(e.target.value);
+                                        if (aviso) setAviso(null);
+                                    }}
                                     className="form-select form-select-lg shadow-sm border-light bg-light text-muted"
                                 >
                                     <option value="">Seleccione una obra...</option>
@@ -217,7 +253,10 @@ export default function SolicitarArticulo() {
                                     <select
                                         disabled={enviando}
                                         value={idArticuloActual}
-                                        onChange={(e) => setIdArticuloActual(e.target.value)}
+                                        onChange={(e) => {
+                                            setIdArticuloActual(e.target.value);
+                                            if (aviso) setAviso(null);
+                                        }}
                                         className="form-select form-select-lg shadow-sm border-0 bg-white text-muted"
                                     >
                                         <option value="">Seleccione un artículo...</option>
@@ -235,7 +274,10 @@ export default function SolicitarArticulo() {
                                         min="1"
                                         disabled={enviando}
                                         value={cantidadActual}
-                                        onChange={(e) => setCantidadActual(e.target.value)}
+                                        onChange={(e) => {
+                                            setCantidadActual(e.target.value);
+                                            if (aviso) setAviso(null);
+                                        }}
                                         className="form-control form-control-lg shadow-sm border-0 bg-white"
                                         placeholder="Ej: 5"
                                     />

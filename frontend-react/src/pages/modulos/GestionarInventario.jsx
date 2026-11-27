@@ -37,6 +37,7 @@ export default function GestionarInventario() {
 
     const [guardando, setGuardando] = useState(false);
     const [error, setError] = useState('');
+    const [exito, setExito] = useState('');
 
     const cargarCatalogos = useCallback(async () => {
         setCargandoCatalogos(true);
@@ -94,6 +95,8 @@ export default function GestionarInventario() {
             ...prev,
             [name]: value
         }));
+        if (error) setError('');
+        if (exito) setExito('');
     };
 
     const handleCrearCategoria = async () => {
@@ -168,6 +171,7 @@ export default function GestionarInventario() {
         e.preventDefault();
         setGuardando(true);
         setError('');
+        setExito('');
 
         const stockNum = parseInt(formData.stock_actual, 10) || 0;
         const codigoLimpio = formData.codigo_de_barras.trim();
@@ -200,8 +204,10 @@ export default function GestionarInventario() {
                 body: JSON.stringify(payload)
             });
 
-            alert('Artículo guardado correctamente en el servidor.');
-            navigate('/inventario');
+            setExito('Artículo guardado correctamente en el servidor. Redirigiendo al inventario...');
+            setTimeout(() => {
+                navigate('/inventario');
+            }, 900);
         } catch (err) {
             setError(err.message || 'No se pudo guardar el artículo en el servidor.');
         } finally {
@@ -234,8 +240,15 @@ export default function GestionarInventario() {
                         </div>
                     )}
 
+                    {exito && (
+                        <div className="alert alert-success rounded-3 mb-4" role="alert">
+                            <i className="bi bi-check-circle-fill me-2"></i>
+                            {exito}
+                        </div>
+                    )}
+
                     {error && (
-                        <div className="alert alert-danger rounded-3 mb-4">
+                        <div className="alert alert-danger rounded-3 mb-4" role="alert">
                             <strong>Error al guardar:</strong> {error}
                         </div>
                     )}

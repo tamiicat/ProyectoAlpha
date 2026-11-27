@@ -10,6 +10,9 @@ export default function GestionObras() {
     const [obras, setObras] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
+    const [aviso, setAviso] = useState(null);
+    const [avisoModalObra, setAvisoModalObra] = useState(null);
+    const [avisoModalObs, setAvisoModalObs] = useState(null);
     const [guardandoObra, setGuardandoObra] = useState(false);
     const [guardandoObs, setGuardandoObs] = useState(false);
 
@@ -134,12 +137,16 @@ export default function GestionObras() {
     };
 
     const handleAbrirNuevaObra = () => {
+        setAviso(null);
+        setAvisoModalObra(null);
         setModoEdicion(false);
         setFormData(estadoInicialFormulario);
         setMostrarModalObra(true);
     };
 
     const handleAbrirEditarObra = (obra) => {
+        setAviso(null);
+        setAvisoModalObra(null);
         setModoEdicion(true);
         setFormData({
             id_obra: obra.id_obra,
@@ -162,10 +169,12 @@ export default function GestionObras() {
             ...prev,
             [name]: value
         }));
+        if (avisoModalObra) setAvisoModalObra(null);
     };
 
     const handleGuardarObra = async (e) => {
         e.preventDefault();
+        setAvisoModalObra(null);
 
         setGuardandoObra(true);
         try {
@@ -206,8 +215,15 @@ export default function GestionObras() {
 
             await cargarObrasYCatalogos();
             setMostrarModalObra(false);
+            setAviso({
+                tipo: 'success',
+                mensaje: modoEdicion ? 'Obra actualizada correctamente.' : 'Obra creada correctamente.'
+            });
         } catch (err) {
-            alert(`No se pudo guardar la obra: ${err?.message || 'Error en el servidor.'}`);
+            setAvisoModalObra({
+                tipo: 'danger',
+                mensaje: `No se pudo guardar la obra: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setGuardandoObra(false);
         }
@@ -217,20 +233,26 @@ export default function GestionObras() {
         const confirmar = window.confirm(`¿Seguro que deseas desactivar/eliminar la obra "${obra.nombre}" (#OB-${obra.id_obra})?`);
         if (!confirmar) return;
 
+        setAviso(null);
         try {
             await apiFetch(`/obras/${obra.id_obra}/`, {
                 method: 'PATCH',
                 body: JSON.stringify({ activo: false })
             });
             await cargarObrasYCatalogos();
+            setAviso({ tipo: 'success', mensaje: `Obra "${obra.nombre}" desactivada correctamente.` });
         } catch (err) {
-            alert(`No se pudo desactivar la obra: ${err?.message || 'Error en el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo desactivar la obra: ${err?.message || 'Error en el servidor.'}`
+            });
         }
     };
 
     const handleAgregarObservacion = async (e) => {
         e.preventDefault();
         if (!nuevaObservacion.trim() || !obraDetalles) return;
+        setAvisoModalObs(null);
 
         setGuardandoObs(true);
         try {
@@ -243,8 +265,12 @@ export default function GestionObras() {
             });
             setNuevaObservacion('');
             await cargarObrasYCatalogos(obraDetalles.id_obra);
+            setAvisoModalObs({ tipo: 'success', mensaje: 'Observación agregada correctamente.' });
         } catch (err) {
-            alert(`No se pudo agregar la observación: ${err?.message || 'Error en el servidor.'}`);
+            setAvisoModalObs({
+                tipo: 'danger',
+                mensaje: `No se pudo agregar la observación: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setGuardandoObs(false);
         }
@@ -287,6 +313,32 @@ export default function GestionObras() {
                             <button type="button" onClick={() => cargarObrasYCatalogos()} className="btn btn-sm btn-outline-danger ms-3">
                                 Reintentar
                             </button>
+                        </div>
+                    )}
+
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
                         </div>
                     )}
 
@@ -340,7 +392,11 @@ export default function GestionObras() {
                                                 <div className="d-flex justify-content-center gap-2">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setObraDetalles(obra)}
+                                                        onClick={() => {
+                                                            setAvisoModalObs(null);
+                                                            setNuevaObservacion('');
+                                                            setObraDetalles(obra);
+                                                        }}
                                                         className="btn btn-sm btn-outline-secondary"
                                                         title="Observaciones (Detalle de Obra)"
                                                     >
@@ -390,6 +446,21 @@ export default function GestionObras() {
                             </div>
                             <form onSubmit={handleGuardarObra}>
                                 <div className="modal-body p-4">
+                                    {avisoModalObra && (
+                                        <div
+                                            className={`alert alert-${avisoModalObra.tipo} alert-dismissible fade show rounded-3 mb-3 d-flex justify-content-between align-items-center`}
+                                            role="alert"
+                                        >
+                                            <span className="small">{avisoModalObra.mensaje}</span>
+                                            <button
+                                                type="button"
+                                                className="btn-close"
+                                                aria-label="Cerrar"
+                                                onClick={() => setAvisoModalObra(null)}
+                                            ></button>
+                                        </div>
+                                    )}
+
                                     <div className="row g-3">
                                         <div className="col-12">
                                             <label className="form-label fw-semibold text-muted small">Nombre de la Obra</label>
@@ -545,6 +616,21 @@ export default function GestionObras() {
                                 ></button>
                             </div>
                             <div className="modal-body p-4">
+                                {avisoModalObs && (
+                                    <div
+                                        className={`alert alert-${avisoModalObs.tipo} alert-dismissible fade show rounded-3 mb-3 d-flex justify-content-between align-items-center`}
+                                        role="alert"
+                                    >
+                                        <span className="small">{avisoModalObs.mensaje}</span>
+                                        <button
+                                            type="button"
+                                            className="btn-close"
+                                            aria-label="Cerrar"
+                                            onClick={() => setAvisoModalObs(null)}
+                                        ></button>
+                                    </div>
+                                )}
+
                                 <div className="mb-4">
                                     <h6 className="fw-bold text-muted small text-uppercase mb-3">Historial de Detalles</h6>
                                     {obraDetalles.detalles.length === 0 ? (
@@ -571,7 +657,10 @@ export default function GestionObras() {
                                         disabled={guardandoObs}
                                         rows="3"
                                         value={nuevaObservacion}
-                                        onChange={(e) => setNuevaObservacion(e.target.value)}
+                                        onChange={(e) => {
+                                            setNuevaObservacion(e.target.value);
+                                            if (avisoModalObs) setAvisoModalObs(null);
+                                        }}
                                         className="form-control bg-light mb-3"
                                         placeholder="Registrar avance, novedad u observación técnica..."
                                     ></textarea>

@@ -11,6 +11,7 @@ export default function ModuloCompras() {
     const [compras, setCompras] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
+    const [aviso, setAviso] = useState(null);
     const [guardando, setGuardando] = useState(false);
 
     // Estado de cabecera (Factura)
@@ -133,14 +134,19 @@ export default function ModuloCompras() {
         setIdArticuloActual(idArt);
         const art = articulos.find((a) => String(a.id_articulo) === String(idArt));
         setPrecioUnitarioActual(art ? String(art.precio) : '');
+        if (aviso) setAviso(null);
     };
 
     const handleAgregarArticulo = () => {
+        setAviso(null);
         const cantNum = parseInt(cantidadActual, 10);
         const precioNum = parseFloat(precioUnitarioActual);
 
         if (!idArticuloActual || !cantNum || cantNum <= 0 || isNaN(precioNum) || precioNum < 0) {
-            alert('Seleccione un artículo, una cantidad mayor a 0 y un precio unitario válido.');
+            setAviso({
+                tipo: 'warning',
+                mensaje: 'Seleccione un artículo, una cantidad mayor a 0 y un precio unitario válido.'
+            });
             return;
         }
 
@@ -165,6 +171,7 @@ export default function ModuloCompras() {
 
     const handleQuitarArticulo = (id_detalle) => {
         setDetalles((prev) => prev.filter((item) => item.id_detalle !== id_detalle));
+        if (aviso) setAviso(null);
     };
 
     // Cálculos automáticos según modelo (NUMERIC 12, 2)
@@ -174,9 +181,13 @@ export default function ModuloCompras() {
 
     const handleRegistrarCompra = async (e) => {
         e.preventDefault();
+        setAviso(null);
 
         if (detalles.length === 0) {
-            alert('Debe agregar al menos un artículo a la compra.');
+            setAviso({
+                tipo: 'warning',
+                mensaje: 'Debe agregar al menos un artículo a la compra.'
+            });
             return;
         }
 
@@ -212,9 +223,15 @@ export default function ModuloCompras() {
             });
             setDetalles([]);
             await cargarComprasYCatalogos();
-            alert('Compra registrada correctamente en el servidor.');
+            setAviso({
+                tipo: 'success',
+                mensaje: 'Compra registrada correctamente en el servidor.'
+            });
         } catch (err) {
-            alert(`No se pudo registrar la compra: ${err?.message || 'Error en el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo registrar la compra: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setGuardando(false);
         }
@@ -250,6 +267,32 @@ export default function ModuloCompras() {
                         </div>
                     )}
 
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
+                        </div>
+                    )}
+
                     {/* Formulario Nueva Compra (Factura + Detalle_Factura) */}
                     <div className="card bg-light border-0 shadow-sm p-4 mb-5" style={{ borderRadius: '15px' }}>
                         <h5 className="fw-bold mb-3" style={{ color: '#2b3d52' }}>Registrar Nueva Compra</h5>
@@ -265,7 +308,10 @@ export default function ModuloCompras() {
                                         className="form-control bg-white border-light shadow-sm"
                                         placeholder="Ej: FAC-305"
                                         value={formData.numero}
-                                        onChange={(e) => setFormData((prev) => ({ ...prev, numero: e.target.value }))}
+                                        onChange={(e) => {
+                                            setFormData((prev) => ({ ...prev, numero: e.target.value }));
+                                            if (aviso) setAviso(null);
+                                        }}
                                     />
                                 </div>
                                 <div className="col-12 col-md-4">
@@ -276,7 +322,10 @@ export default function ModuloCompras() {
                                         disabled={guardando}
                                         className="form-control bg-white border-light shadow-sm"
                                         value={formData.fecha_compra}
-                                        onChange={(e) => setFormData((prev) => ({ ...prev, fecha_compra: e.target.value }))}
+                                        onChange={(e) => {
+                                            setFormData((prev) => ({ ...prev, fecha_compra: e.target.value }));
+                                            if (aviso) setAviso(null);
+                                        }}
                                     />
                                 </div>
                                 <div className="col-12 col-md-4">
@@ -288,7 +337,10 @@ export default function ModuloCompras() {
                                         className="form-control bg-white border-light shadow-sm"
                                         placeholder="Ej: factura_305.pdf"
                                         value={formData.comprobante}
-                                        onChange={(e) => setFormData((prev) => ({ ...prev, comprobante: e.target.value }))}
+                                        onChange={(e) => {
+                                            setFormData((prev) => ({ ...prev, comprobante: e.target.value }));
+                                            if (aviso) setAviso(null);
+                                        }}
                                     />
                                 </div>
                                 <div className="col-12 col-md-6">
@@ -298,7 +350,10 @@ export default function ModuloCompras() {
                                         disabled={guardando || cargando}
                                         className="form-select bg-white border-light shadow-sm text-muted"
                                         value={formData.id_proveedor}
-                                        onChange={(e) => setFormData((prev) => ({ ...prev, id_proveedor: e.target.value }))}
+                                        onChange={(e) => {
+                                            setFormData((prev) => ({ ...prev, id_proveedor: e.target.value }));
+                                            if (aviso) setAviso(null);
+                                        }}
                                     >
                                         <option value="">Seleccione un proveedor...</option>
                                         {proveedores.map((prov) => (
@@ -315,7 +370,10 @@ export default function ModuloCompras() {
                                         disabled={guardando || cargando}
                                         className="form-select bg-white border-light shadow-sm text-muted"
                                         value={formData.id_ubicacion}
-                                        onChange={(e) => setFormData((prev) => ({ ...prev, id_ubicacion: e.target.value }))}
+                                        onChange={(e) => {
+                                            setFormData((prev) => ({ ...prev, id_ubicacion: e.target.value }));
+                                            if (aviso) setAviso(null);
+                                        }}
                                     >
                                         <option value="">Seleccione una bodega/ubicación...</option>
                                         {ubicaciones.map((ub) => (
@@ -356,7 +414,10 @@ export default function ModuloCompras() {
                                             className="form-control bg-light border-0"
                                             placeholder="Ej: 5"
                                             value={cantidadActual}
-                                            onChange={(e) => setCantidadActual(e.target.value)}
+                                            onChange={(e) => {
+                                                setCantidadActual(e.target.value);
+                                                if (aviso) setAviso(null);
+                                            }}
                                         />
                                     </div>
                                     <div className="col-6 col-md-3">
@@ -369,7 +430,10 @@ export default function ModuloCompras() {
                                             className="form-control bg-light border-0"
                                             placeholder="Ej: 45000"
                                             value={precioUnitarioActual}
-                                            onChange={(e) => setPrecioUnitarioActual(e.target.value)}
+                                            onChange={(e) => {
+                                                setPrecioUnitarioActual(e.target.value);
+                                                if (aviso) setAviso(null);
+                                            }}
                                         />
                                     </div>
                                     <div className="col-12 col-md-2 d-grid">
