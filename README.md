@@ -95,3 +95,5 @@ python verificar_evidencias.py
   - Contraseña: `AdminFyag2026#`
   - Rol: `ADMIN_TI` *(revisa `DEMO_USERS` en `views/auth_service_view.py` para ver los demás usuarios registrados)*
 - **Cabecera RBAC para pruebas directas de API:** envía `X-User-Role` según el rol requerido (por ejemplo `admin` o `bodeguero`).
+
+""
