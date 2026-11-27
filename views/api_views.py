@@ -2104,11 +2104,15 @@ def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
                     with connection.cursor() as cursor:
                         cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
                         cursor.execute(
+                            "SELECT id_usuario FROM usuario WHERE id_usuario = %s;",
+                            [id_usuario],
+                        )
+                        if cursor.fetchone() is None:
+                            return JsonResponse({"error": "Usuario no encontrado."}, status=404)
+                        cursor.execute(
                             "DELETE FROM usuario WHERE id_usuario = %s;",
                             [id_usuario],
                         )
-                        if cursor.rowcount == 0:
-                            return JsonResponse({"error": "Usuario no encontrado."}, status=404)
             except Exception as exc:
                 return JsonResponse({"error": f"Error al eliminar usuario: {exc}"}, status=500)
 
