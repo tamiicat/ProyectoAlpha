@@ -1789,4 +1789,4 @@ def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
             status=500,
         )
 
->>>>>>> db88d23859c6b9c7e3734048dbf113add11105fc
+
