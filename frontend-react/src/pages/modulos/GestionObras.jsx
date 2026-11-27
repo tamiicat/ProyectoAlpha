@@ -24,6 +24,7 @@ export default function GestionObras() {
 
     const estadoInicialFormulario = {
         id_obra: null,
+        codigo_obra: '',
         id_usuario: '',
         id_cliente: '',
         nombre: '',
@@ -39,6 +40,7 @@ export default function GestionObras() {
 
     const normalizarObra = (o, idx) => ({
         id_obra: o.id_obra ?? o.id ?? idx + 1,
+        codigo_obra: o.codigo_obra ?? o.codigo ?? `OB-${o.id_obra ?? o.id ?? idx + 1}`,
         id_usuario: o.id_usuario ?? o.usuario_id ?? '',
         usuario_nombre: o.usuario_nombre ?? o.usuario ?? 'Sin asignar',
         id_cliente: o.id_cliente ?? o.cliente_id ?? '',
@@ -150,6 +152,7 @@ export default function GestionObras() {
         setModoEdicion(true);
         setFormData({
             id_obra: obra.id_obra,
+            codigo_obra: obra.codigo_obra || '',
             id_usuario: String(obra.id_usuario),
             id_cliente: String(obra.id_cliente),
             nombre: obra.nombre,
@@ -176,10 +179,20 @@ export default function GestionObras() {
         e.preventDefault();
         setAvisoModalObra(null);
 
+        const codigoLimpio = formData.codigo_obra.trim().toUpperCase();
+        if (!codigoLimpio) {
+            setAvisoModalObra({
+                tipo: 'warning',
+                mensaje: 'Debes ingresar un código de obra (por ejemplo: OB-001).'
+            });
+            return;
+        }
+
         setGuardandoObra(true);
         try {
             if (modoEdicion) {
                 const payloadEditar = {
+                    codigo_obra: codigoLimpio,
                     id_usuario: Number(formData.id_usuario),
                     id_cliente: Number(formData.id_cliente),
                     nombre: formData.nombre.trim(),
@@ -196,6 +209,7 @@ export default function GestionObras() {
                 });
             } else {
                 const payloadCrear = {
+                    codigo_obra: codigoLimpio,
                     id_usuario: Number(formData.id_usuario),
                     id_cliente: Number(formData.id_cliente),
                     nombre: formData.nombre.trim(),
@@ -230,7 +244,7 @@ export default function GestionObras() {
     };
 
     const handleEliminarObra = async (obra) => {
-        const confirmar = window.confirm(`¿Seguro que deseas desactivar/eliminar la obra "${obra.nombre}" (#OB-${obra.id_obra})?`);
+        const confirmar = window.confirm(`¿Seguro que deseas desactivar/eliminar la obra "${obra.nombre}" (${obra.codigo_obra})?`);
         if (!confirmar) return;
 
         setAviso(null);
@@ -346,7 +360,7 @@ export default function GestionObras() {
                         <table className="table table-hover align-middle mb-0">
                             <thead style={{ backgroundColor: '#f4f6f8', color: '#2b3d52' }}>
                                 <tr>
-                                    <th className="py-3 px-4">ID Obra</th>
+                                    <th className="py-3 px-4">Código / ID</th>
                                     <th className="py-3">Nombre</th>
                                     <th className="py-3">Cliente</th>
                                     <th className="py-3">Encargado</th>
@@ -374,7 +388,10 @@ export default function GestionObras() {
                                 ) : (
                                     obras.map((obra) => (
                                         <tr key={obra.id_obra}>
-                                            <td className="px-4 fw-semibold text-muted">#OB-{obra.id_obra}</td>
+                                            <td className="px-4">
+                                                <div className="fw-semibold text-dark">{obra.codigo_obra}</div>
+                                                <div className="small text-muted">#OB-{obra.id_obra}</div>
+                                            </td>
                                             <td className="fw-semibold">{obra.nombre}</td>
                                             <td className="small">{obra.cliente_nombre}</td>
                                             <td className="small">{obra.usuario_nombre}</td>
@@ -462,7 +479,20 @@ export default function GestionObras() {
                                     )}
 
                                     <div className="row g-3">
-                                        <div className="col-12">
+                                        <div className="col-12 col-md-4">
+                                            <label className="form-label fw-semibold text-muted small">Código de Obra</label>
+                                            <input
+                                                type="text"
+                                                name="codigo_obra"
+                                                maxLength={30}
+                                                required
+                                                value={formData.codigo_obra}
+                                                onChange={handleChange}
+                                                className="form-control bg-light"
+                                                placeholder="Ej: OB-001"
+                                            />
+                                        </div>
+                                        <div className="col-12 col-md-8">
                                             <label className="form-label fw-semibold text-muted small">Nombre de la Obra</label>
                                             <input
                                                 type="text"
@@ -607,7 +637,7 @@ export default function GestionObras() {
                         <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '20px', overflow: 'hidden' }}>
                             <div className="modal-header px-4 py-3" style={{ backgroundColor: '#2b3d52', color: 'white' }}>
                                 <h5 className="modal-title fw-semibold">
-                                    Observaciones - #OB-{obraDetalles.id_obra} ({obraDetalles.nombre})
+                                    Observaciones - {obraDetalles.codigo_obra} ({obraDetalles.nombre})
                                 </h5>
                                 <button
                                     type="button"
