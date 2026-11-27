@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 
@@ -272,19 +273,260 @@ const PASOS_POR_ROL = {
   ],
 };
 
+// Guía rápida por módulo (2-3 pasos claros sin depender de botones internos)
+const GUIA_POR_RUTA = {
+  '/inventario': [
+    {
+      popover: {
+        title: 'Inventario Registrado',
+        description:
+          'Aquí puedes consultar todos los artículos, su stock actual, stock crítico, precio y ubicación en bodega.',
+      },
+    },
+    {
+      popover: {
+        title: 'Filtros y Semáforo de Stock',
+        description:
+          'Filtra por búsqueda, categoría, bodega o estado del semáforo (Óptimo, Stock Bajo o Crítico) y ajusta cuántas filas ver por página.',
+      },
+    },
+  ],
+  '/gestionar-inventario': [
+    {
+      popover: {
+        title: 'Añadir Artículo al Inventario',
+        description:
+          'Registra nuevos insumos o repuestos indicando nombre, código de barras/SKU, categoría, bodega, precio y stock crítico.',
+      },
+    },
+    {
+      popover: {
+        title: 'Stock Crítico',
+        description:
+          'Define bien el stock crítico para que el sistema genere alertas automáticas antes de quedarte sin existencias.',
+      },
+    },
+  ],
+  '/gestion-catalogos': [
+    {
+      popover: {
+        title: 'Categorías y Bodegas',
+        description:
+          'Administra las categorías de productos y las bodegas/ubicaciones disponibles para clasificar tu inventario.',
+      },
+    },
+  ],
+  '/cardex': [
+    {
+      popover: {
+        title: 'Cardex de Movimientos',
+        description:
+          'Consulta el historial completo de entradas, salidas y ajustes de inventario con trazabilidad por fecha y usuario.',
+      },
+    },
+    {
+      popover: {
+        title: 'Filtros y Paginación',
+        description:
+          'Usa el buscador y los filtros por tipo de movimiento, y cambia la cantidad de registros visibles por página (10, 15, 25 o 50).',
+      },
+    },
+  ],
+  '/escaner': [
+    {
+      popover: {
+        title: 'Escáner de Códigos de Barras',
+        description:
+          'Escanea o ingresa un código de barras/SKU para consultar rápidamente el stock y los detalles de un artículo en terreno o bodega.',
+      },
+    },
+  ],
+  '/registrar-merma': [
+    {
+      popover: {
+        title: 'Registrar Merma',
+        description:
+          'Reporta pérdidas, daños o vencimientos de insumos indicando el artículo, la cantidad afectada y el motivo.',
+      },
+    },
+  ],
+  '/ver-mermas': [
+    {
+      popover: {
+        title: 'Historial de Mermas',
+        description:
+          'Revisa todas las mermas registradas para auditar pérdidas de inventario y tomar acciones correctivas.',
+      },
+    },
+  ],
+  '/solicitar-articulo': [
+    {
+      popover: {
+        title: 'Solicitar Artículo',
+        description:
+          'Crea requerimientos de materiales seleccionando la obra destino, los artículos necesarios y la cantidad.',
+      },
+    },
+    {
+      popover: {
+        title: 'Seguimiento',
+        description:
+          'Una vez enviada, tu solicitud queda registrada en el historial inferior y pasa a revisión/autorización.',
+      },
+    },
+  ],
+  '/despacho': [
+    {
+      popover: {
+        title: 'Módulo de Despacho',
+        description:
+          'Gestiona la salida física de materiales desde bodega hacia las obras o técnicos solicitantes.',
+      },
+    },
+  ],
+  '/recepcion': [
+    {
+      popover: {
+        title: 'Recepción de Compra',
+        description:
+          'Confirma el ingreso físico de los productos comprados a proveedores para actualizar el stock en bodega.',
+      },
+    },
+  ],
+  '/gestion-obras': [
+    {
+      popover: {
+        title: 'Gestión de Obras',
+        description:
+          'Administra los proyectos e instalaciones activas, asignando código de obra, cliente, encargado, fechas y estado.',
+      },
+    },
+    {
+      popover: {
+        title: 'Observaciones de Obra',
+        description:
+          'Desde la tabla puedes abrir el historial de observaciones de cada obra para registrar avances o novedades técnicas.',
+      },
+    },
+  ],
+  '/diagnostico': [
+    {
+      popover: {
+        title: 'Diagnóstico Técnico',
+        description:
+          'Registra evaluaciones técnicas en terreno, fallas detectadas y recomendaciones para cada equipo u obra.',
+      },
+    },
+  ],
+  '/modulo-compras': [
+    {
+      popover: {
+        title: 'Módulo de Compras',
+        description:
+          'Registra compras de abastecimiento seleccionando proveedor, bodega destino y agregando los artículos con cálculo automático de Neto, IVA y Bruto.',
+      },
+    },
+    {
+      popover: {
+        title: 'Historial de Compras',
+        description:
+          'En la tabla inferior puedes revisar las compras registradas, navegar entre páginas y abrir el detalle de ítems de cada factura.',
+      },
+    },
+  ],
+  '/gestion-facturas': [
+    {
+      popover: {
+        title: 'Gestión de Facturas',
+        description:
+          'Consulta, busca y registra facturas de compra junto con su desglose de artículos y comprobante asociado.',
+      },
+    },
+  ],
+  '/reporte-financiero': [
+    {
+      popover: {
+        title: 'Reporte Financiero',
+        description:
+          'Visualiza el balance de ingresos, egresos y saldo neto en CLP, filtrando por búsqueda o tipo de movimiento.',
+      },
+    },
+    {
+      popover: {
+        title: 'Exportación a Excel y PDF',
+        description:
+          'Marca las casillas de los registros que necesites en la tabla y usa los botones inferiores para exportar a Excel (CSV) o imprimir en PDF.',
+      },
+    },
+  ],
+  '/gestion-proveedores': [
+    {
+      popover: {
+        title: 'Gestión de Proveedores',
+        description:
+          'Administra el directorio de proveedores (RUT, razón social y contacto) utilizados en compras y facturas.',
+      },
+    },
+  ],
+  '/gestion-clientes': [
+    {
+      popover: {
+        title: 'Gestión de Clientes',
+        description:
+          'Registra y mantiene actualizada la información de los clientes asociados a tus obras y proyectos.',
+      },
+    },
+  ],
+  '/crear-cuenta': [
+    {
+      popover: {
+        title: 'Crear Cuenta de Usuario',
+        description:
+          'Crea nuevas cuentas de acceso al sistema asignando nombre, correo, contraseña y el rol correspondiente.',
+      },
+    },
+  ],
+  '/gestion-usuarios': [
+    {
+      popover: {
+        title: 'Gestión de Usuarios',
+        description:
+          'Consulta las cuentas registradas, revisa sus roles y administra el acceso del personal al sistema.',
+      },
+    },
+  ],
+  '/autorizaciones': [
+    {
+      popover: {
+        title: 'Autorizaciones Pendientes',
+        description:
+          'Revisa, aprueba o rechaza las solicitudes de materiales y movimientos que requieren validación superior.',
+      },
+    },
+  ],
+};
+
 export default function TourAyuda({ rol = 'admin', autoIniciar = true }) {
+  const location = useLocation();
   const [menuAbierto, setMenuAbierto] = useState(false);
 
-  const pasosDisponibles = (PASOS_POR_ROL[rol] || PASOS_POR_ROL.admin).filter((paso) => {
-    if (!paso.element) return true;
-    return Boolean(document.querySelector(paso.element));
-  });
+  const guiaModulo = GUIA_POR_RUTA[location.pathname];
+  const esModulo = Boolean(guiaModulo);
+
+  const pasosDisponibles = esModulo
+    ? guiaModulo
+    : (PASOS_POR_ROL[rol] || PASOS_POR_ROL.admin).filter((paso) => {
+        if (!paso.element) return true;
+        return Boolean(document.querySelector(paso.element));
+      });
 
   const iniciarTour = (stepsToRun = pasosDisponibles) => {
     if (!stepsToRun.length) return;
     setMenuAbierto(false);
 
-    const claveVista = `fyag_tour_visto_v2_${rol}`;
+    const claveVista = esModulo
+      ? `fyag_tour_modulo_${location.pathname}`
+      : `fyag_tour_visto_v2_${rol}`;
 
     const instancia = driver({
       showProgress: true,
@@ -309,7 +551,11 @@ export default function TourAyuda({ rol = 'admin', autoIniciar = true }) {
   };
 
   useEffect(() => {
-    if (!autoIniciar) return;
+    setMenuAbierto(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!autoIniciar || esModulo) return;
     const claveVista = `fyag_tour_visto_v2_${rol}`;
     let yaVisto = false;
     try {
@@ -331,10 +577,9 @@ export default function TourAyuda({ rol = 'admin', autoIniciar = true }) {
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rol, autoIniciar]);
+  }, [rol, autoIniciar, esModulo]);
 
-  const verSeccionEspecifica = (selector) => {
-    const paso = pasosDisponibles.find((p) => p.element === selector);
+  const verPasoEspecifico = (paso) => {
     if (paso) {
       iniciarTour([paso]);
     }
@@ -357,7 +602,9 @@ export default function TourAyuda({ rol = 'admin', autoIniciar = true }) {
             className="px-3 py-2 text-white d-flex justify-content-between align-items-center"
             style={{ backgroundColor: '#1b2e42' }}
           >
-            <span className="fw-semibold small">Guía Interactiva</span>
+            <span className="fw-semibold small">
+              {esModulo ? 'Ayuda del Módulo' : 'Guía Interactiva'}
+            </span>
             <button
               type="button"
               className="btn-close btn-close-white btn-sm"
@@ -373,21 +620,22 @@ export default function TourAyuda({ rol = 'admin', autoIniciar = true }) {
               className="btn btn-sm text-white w-100 fw-semibold"
               style={{ backgroundColor: '#1b2e42' }}
             >
-              <i className="bi bi-play-circle me-1"></i> Iniciar tour completo
+              <i className="bi bi-play-circle me-1"></i>
+              {esModulo ? 'Ver guía de este módulo' : 'Iniciar tour completo'}
             </button>
 
             <div className="text-muted fw-semibold mt-1" style={{ fontSize: '0.72rem' }}>
-              VER SECCIÓN ESPECÍFICA
+              {esModulo ? 'TEMAS DE ESTA VISTA' : 'VER SECCIÓN ESPECÍFICA'}
             </div>
 
-            {pasosDisponibles.map((paso) => (
+            {pasosDisponibles.map((paso, idx) => (
               <button
-                key={paso.element}
+                key={paso.element || `${location.pathname}-${idx}`}
                 type="button"
-                onClick={() => verSeccionEspecifica(paso.element)}
+                onClick={() => verPasoEspecifico(paso)}
                 className="btn btn-outline-secondary btn-sm w-100 d-flex align-items-center gap-2 text-start"
               >
-                <i className="bi bi-search flex-shrink-0"></i>
+                <i className="bi bi-info-circle flex-shrink-0"></i>
                 <span className="text-truncate">{paso.popover.title}</span>
               </button>
             ))}
