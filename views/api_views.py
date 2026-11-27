@@ -1609,8 +1609,15 @@ def api_despachos(request: Any) -> JsonResponse:
                 )
                 mapa_clientes = {r[0]: r[1] for r in cursor.fetchall()}
 
-                cursor.execute("SELECT id_obra, COALESCE(descripcion, codigo) FROM obra;")
-                mapa_obras = {r[0]: r[1] for r in cursor.fetchall()}
+                cursor.execute("SELECT * FROM obra;")
+                obra_cols = [c[0] for c in cursor.description] if cursor.description else []
+                mapa_obras = {}
+                for r in cursor.fetchall():
+                    o_rec = dict(zip(obra_cols, r))
+                    o_id = o_rec.get("id_obra") or o_rec.get("id")
+                    o_nom = o_rec.get("nombre") or o_rec.get("descripcion") or o_rec.get("codigo") or f"Obra #{o_id}"
+                    if o_id is not None:
+                        mapa_obras[o_id] = o_nom
 
                 cursor.execute(
                     "SELECT id_usuario, COALESCE(NULLIF(TRIM(CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, ''))), ''), usuario) FROM usuario;"
@@ -1779,3 +1786,4 @@ def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
             {"error": f"Error PostgreSQL al actualizar despacho: {exc}"},
             status=500,
         )
+
