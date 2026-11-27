@@ -57,6 +57,7 @@ class Articulo(models.Model):
 
 
 _MEM_TELEMETRIA_MONGO: List[Dict[str, Any]] = []
+_MEM_MERMAS_RESPALDO: List[Dict[str, Any]] = []
 _SYNC_UUIDS_PROCESADOS: set = set()
 
 
@@ -214,6 +215,180 @@ def _set_pg_usuario_sesion(cursor: Any, id_usuario: int) -> None:
     )
 
 
+def _registrar_merma_sql(
+    id_articulo: Optional[int],
+    articulo_nombre: str,
+    cantidad: int,
+    motivo: str = "Defecto de fábrica",
+    justificacion: str = "",
+    fecha_str: Optional[str] = None,
+    usuario_ref: Optional[str] = None,
+    descontar_stock: bool = True,
+) -> Dict[str, Any]:
+    """Inserta merma en 'merma', descuenta stock si aplica y mantiene respaldo."""
+    id_usuario = _resolver_id_usuario(usuario_ref)
+    fecha_dt = datetime.now(timezone.utc)
+    if fecha_str:
+        try:
+            fecha_dt = datetime.fromisoformat(str(fecha_str).replace("Z", "+00:00"))
+        except Exception:
+            pass
+
+    articulo_obj = None
+    if id_articulo is not None:
+        articulo_obj = Articulo.objects.filter(id_articulo=int(id_articulo)).first()
+    if not articulo_obj and articulo_nombre:
+        articulo_obj = Articulo.objects.filter(
+            nombre__iexact=articulo_nombre.strip()
+        ).first()
+    if not articulo_obj and articulo_nombre:
+        articulo_obj = Articulo.objects.filter(
+            codigo_de_barras=articulo_nombre.strip()
+        ).first()
+
+    id_art_bd = articulo_obj.id_articulo if articulo_obj else id_articulo
+    nombre_art_final = (
+        articulo_obj.nombre
+        if articulo_obj
+        else (articulo_nombre or f"Artículo #{id_articulo or 0}")
+    )
+
+    responsable_nombre = "Administrador"
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(
+                    NULLIF(TRIM(CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, ''))), ''),
+                    usuario,
+                    'Administrador'
+                )
+                FROM usuario
+                WHERE id_usuario = %s
+                LIMIT 1;
+                """,
+                [id_usuario],
+            )
+            r_usr = cursor.fetchone()
+            if r_usr and r_usr[0]:
+                responsable_nombre = str(r_usr[0])
+    except Exception:
+        pass
+
+    id_merma_bd: Optional[int] = None
+    if id_art_bd is not None:
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    _set_pg_usuario_sesion(cursor, id_usuario)
+                    cursor.execute(
+                        """
+                        INSERT INTO merma (
+                            id_articulo, id_usuario, fecha, cantidad, motivo, justificacion
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING id_merma;
+                        """,
+                        [
+                            int(id_art_bd),
+                            int(id_usuario),
+                            fecha_dt,
+                            int(cantidad),
+                            (motivo or "Otro")[:100],
+                            (justificacion or "")[:500],
+                        ],
+                    )
+                    row_m = cursor.fetchone()
+                    if row_m and row_m[0] is not None:
+                        id_merma_bd = int(row_m[0])
+
+                if descontar_stock and articulo_obj is not None:
+                    nuevo_stock = max(0, int(articulo_obj.stock_actual) - int(cantidad))
+                    articulo_obj.stock_actual = nuevo_stock
+                    articulo_obj.estado = "sin stock" if nuevo_stock <= 0 else "en bodega"
+                    articulo_obj.save(update_fields=["stock_actual", "estado"])
+                    _registrar_cardex_sql(
+                        id_articulo=int(articulo_obj.id_articulo),
+                        id_usuario=int(id_usuario),
+                        tipo_sql="merma",
+                        cantidad=int(cantidad),
+                        stock_resultante=nuevo_stock,
+                        costo_unitario=float(articulo_obj.precio or 0),
+                    )
+        except Exception:
+            id_merma_bd = None
+
+    registro = {
+        "id": id_merma_bd or (len(_MEM_MERMAS_RESPALDO) + 1),
+        "id_merma": id_merma_bd or (len(_MEM_MERMAS_RESPALDO) + 1),
+        "id_articulo": id_art_bd,
+        "fecha": fecha_dt.isoformat(),
+        "fecha_hora": fecha_dt.isoformat(),
+        "articulo": nombre_art_final,
+        "responsable": responsable_nombre,
+        "cantidad": int(cantidad),
+        "motivo": motivo or "Otro",
+        "justificacion": justificacion or "",
+    }
+    if id_merma_bd is None:
+        _MEM_MERMAS_RESPALDO.insert(0, registro)
+    return registro
+
+
+def listar_mermas_sql() -> List[Dict[str, Any]]:
+    """Consulta el historial de mermas combinando PostgreSQL ('merma') y respaldo local."""
+    mermas: List[Dict[str, Any]] = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM merma LIMIT 0;")
+            cols = [c[0] for c in cursor.description] if cursor.description else []
+            if cols:
+                cursor.execute(
+                    """
+                    SELECT
+                        m.*,
+                        COALESCE(a.nombre, CONCAT('Artículo #', m.id_articulo::text)) AS articulo_nombre,
+                        COALESCE(
+                            NULLIF(TRIM(CONCAT(COALESCE(u.nombres, ''), ' ', COALESCE(u.apellidos, ''))), ''),
+                            u.usuario,
+                            'Administrador'
+                        ) AS responsable_nombre
+                    FROM merma m
+                    LEFT JOIN articulo a ON a.id_articulo = m.id_articulo
+                    LEFT JOIN usuario u ON u.id_usuario = m.id_usuario
+                    ORDER BY 1 DESC;
+                    """
+                )
+                full_cols = [c[0] for c in cursor.description]
+                for row in cursor.fetchall():
+                    rec = dict(zip(full_cols, row))
+                    id_val = rec.get("id_merma") or rec.get("id")
+                    fecha_raw = rec.get("fecha") or rec.get("fecha_hora") or ""
+                    fecha_str = (
+                        fecha_raw.isoformat()
+                        if hasattr(fecha_raw, "isoformat")
+                        else str(fecha_raw or "")
+                    )
+                    mermas.append(
+                        {
+                            "id": id_val,
+                            "id_merma": id_val,
+                            "id_articulo": rec.get("id_articulo"),
+                            "fecha": fecha_str,
+                            "fecha_hora": fecha_str,
+                            "articulo": rec.get("articulo_nombre") or f"Artículo #{rec.get('id_articulo')}",
+                            "responsable": rec.get("responsable_nombre") or "Administrador",
+                            "cantidad": rec.get("cantidad") or 0,
+                            "motivo": rec.get("motivo") or "",
+                            "justificacion": rec.get("justificacion") or rec.get("observacion") or "",
+                        }
+                    )
+    except Exception:
+        pass
+
+    return _MEM_MERMAS_RESPALDO + mermas
+
+
 def procesar_avance_obra(
     codigo_obra: str,
     porcentaje_avance: int,
@@ -273,28 +448,78 @@ def procesar_avance_obra(
 
 
 def listar_inventario() -> List[Dict[str, Any]]:
-    """Consulta los artículos activos desde la tabla 'articulo'."""
-    qs = Articulo.objects.filter(activo=True).order_by("id_articulo")
-    return [
-        {
-            "id": obj.id_articulo,
-            "id_articulo": obj.id_articulo,
-            "id_categoria": obj.id_categoria,
-            "id_ubicacion": obj.id_ubicacion,
-            "sku": obj.codigo_de_barras or f"ART-{obj.id_articulo}",
-            "codigo_de_barras": obj.codigo_de_barras,
-            "nombre": obj.nombre,
-            "stock": obj.stock_actual,
-            "stock_actual": obj.stock_actual,
-            "stock_critico": obj.stock_critico,
-            "unidad_de_medida": obj.unidad_de_medida,
-            "ubicacion": f"Ubicación #{obj.id_ubicacion}",
-            "ubicacion_id": obj.id_ubicacion,
-            "precio": float(obj.precio),
-            "estado": obj.estado,
-        }
-        for obj in qs
-    ]
+    """Consulta los artículos activos desde la tabla 'articulo' con categoría y ubicación."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    a.id_articulo,
+                    a.id_categoria,
+                    a.id_ubicacion,
+                    a.codigo_de_barras,
+                    a.nombre,
+                    a.stock_actual,
+                    a.stock_critico,
+                    a.unidad_de_medida,
+                    a.precio,
+                    a.estado,
+                    COALESCE(c.nombre, 'General') AS categoria_nombre,
+                    COALESCE(
+                        NULLIF(TRIM(CONCAT(COALESCE(u.bodega, ''), ' - ', COALESCE(u.detalle, ''))), '-'),
+                        CONCAT('Ubicación #', a.id_ubicacion::text)
+                    ) AS ubicacion_nombre
+                FROM articulo a
+                LEFT JOIN categoria c ON c.id_categoria = a.id_categoria
+                LEFT JOIN ubicacion u ON u.id_ubicacion = a.id_ubicacion
+                WHERE a.activo = TRUE
+                ORDER BY a.id_articulo ASC;
+                """
+            )
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": r[0],
+                    "id_articulo": r[0],
+                    "id_categoria": r[1],
+                    "id_ubicacion": r[2],
+                    "sku": r[3] or f"ART-{r[0]}",
+                    "codigo_de_barras": r[3],
+                    "nombre": r[4],
+                    "stock": r[5],
+                    "stock_actual": r[5],
+                    "stock_critico": r[6],
+                    "unidad_de_medida": r[7],
+                    "precio": float(r[8]) if r[8] is not None else 0.0,
+                    "estado": r[9],
+                    "categoria": r[10],
+                    "ubicacion": r[11],
+                    "ubicacion_id": r[2],
+                }
+                for r in rows
+            ]
+    except Exception:
+        qs = Articulo.objects.filter(activo=True).order_by("id_articulo")
+        return [
+            {
+                "id": obj.id_articulo,
+                "id_articulo": obj.id_articulo,
+                "id_categoria": obj.id_categoria,
+                "id_ubicacion": obj.id_ubicacion,
+                "sku": obj.codigo_de_barras or f"ART-{obj.id_articulo}",
+                "codigo_de_barras": obj.codigo_de_barras,
+                "nombre": obj.nombre,
+                "stock": obj.stock_actual,
+                "stock_actual": obj.stock_actual,
+                "stock_critico": obj.stock_critico,
+                "unidad_de_medida": obj.unidad_de_medida,
+                "ubicacion": f"Ubicación #{obj.id_ubicacion}",
+                "ubicacion_id": obj.id_ubicacion,
+                "precio": float(obj.precio),
+                "estado": obj.estado,
+            }
+            for obj in qs
+        ]
 
 
 def crear_item_inventario(
@@ -635,7 +860,7 @@ def orquestar_movimiento_bodega(
     usuario: str,
     telemetria: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Actualiza 'articulo', inserta en 'cardex' y registra telemetría."""
+    """Actualiza 'articulo', inserta en 'cardex' (y 'merma' si aplica) y registra telemetría."""
     items = listar_inventario()
     item = next(
         (
@@ -643,6 +868,7 @@ def orquestar_movimiento_bodega(
             for i in items
             if str(i["sku"]).lower() == sku.lower()
             or str(i["nombre"]).lower() == sku.lower()
+            or str(i["id_articulo"]) == str(sku)
         ),
         None,
     )
@@ -688,6 +914,24 @@ def orquestar_movimiento_bodega(
             stock_resultante=nuevo_stock,
             costo_unitario=costo_unit,
         )
+        if tipo_sql == "merma":
+            motivo_tel = str(
+                (telemetria or {}).get("motivo", "Merma registrada en bodega")
+            )
+            justif_tel = str(
+                (telemetria or {}).get(
+                    "justificacion", (telemetria or {}).get("observacion", "")
+                )
+            )
+            _registrar_merma_sql(
+                id_articulo=int(item["id_articulo"]),
+                articulo_nombre=item["nombre"],
+                cantidad=cantidad,
+                motivo=motivo_tel,
+                justificacion=justif_tel,
+                usuario_ref=usuario,
+                descontar_stock=False,
+            )
 
     neto = precio_neto * cantidad
     iva = round(neto * 0.19)
