@@ -290,14 +290,35 @@ def api_categorias(request: Any) -> JsonResponse:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO categoria (nombre, activo)
-                    VALUES (%s, TRUE)
-                    ON CONFLICT (nombre) DO UPDATE SET activo = TRUE
-                    RETURNING id_categoria;
+                    SELECT id_categoria
+                    FROM categoria
+                    WHERE LOWER(nombre) = LOWER(%s)
+                    ORDER BY id_categoria ASC
+                    LIMIT 1;
                     """,
                     [nombre[:100]],
                 )
-                id_categoria_bd = int(cursor.fetchone()[0])
+                fila_existente = cursor.fetchone()
+                if fila_existente and fila_existente[0] is not None:
+                    id_categoria_bd = int(fila_existente[0])
+                    cursor.execute(
+                        """
+                        UPDATE categoria
+                        SET activo = TRUE
+                        WHERE id_categoria = %s;
+                        """,
+                        [id_categoria_bd],
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO categoria (nombre, activo)
+                        VALUES (%s, TRUE)
+                        RETURNING id_categoria;
+                        """,
+                        [nombre[:100]],
+                    )
+                    id_categoria_bd = int(cursor.fetchone()[0])
         except Exception as exc:
             return JsonResponse(
                 {"error": f"Error al guardar categoría en BD: {exc}"}, status=500
