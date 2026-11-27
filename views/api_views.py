@@ -13,10 +13,12 @@ from controllers.rbac_xss_controller import (
     sanitize_text_input,
 )
 from models.orden_obra_model import (
+    _registrar_merma_sql,
     buscar_inventario_filtrado,
     crear_item_inventario,
     crear_solicitud_sql,
     listar_inventario,
+    listar_mermas_sql,
     listar_movimientos_cardex,
     listar_solicitudes_sql,
     orquestar_movimiento_bodega,
@@ -290,14 +292,35 @@ def api_categorias(request: Any) -> JsonResponse:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO categoria (nombre, activo)
-                    VALUES (%s, TRUE)
-                    ON CONFLICT (nombre) DO UPDATE SET activo = TRUE
-                    RETURNING id_categoria;
+                    SELECT id_categoria
+                    FROM categoria
+                    WHERE LOWER(nombre) = LOWER(%s)
+                    ORDER BY id_categoria ASC
+                    LIMIT 1;
                     """,
                     [nombre[:100]],
                 )
-                id_categoria_bd = int(cursor.fetchone()[0])
+                fila_existente = cursor.fetchone()
+                if fila_existente and fila_existente[0] is not None:
+                    id_categoria_bd = int(fila_existente[0])
+                    cursor.execute(
+                        """
+                        UPDATE categoria
+                        SET activo = TRUE
+                        WHERE id_categoria = %s;
+                        """,
+                        [id_categoria_bd],
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO categoria (nombre, activo)
+                        VALUES (%s, TRUE)
+                        RETURNING id_categoria;
+                        """,
+                        [nombre[:100]],
+                    )
+                    id_categoria_bd = int(cursor.fetchone()[0])
         except Exception as exc:
             return JsonResponse(
                 {"error": f"Error al guardar categoría en BD: {exc}"}, status=500
@@ -417,56 +440,116 @@ def api_ubicaciones(request: Any) -> JsonResponse:
     return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
-@require_rbac("inventario_bodega", "R")
+@csrf_exempt
 def api_mermas(request: Any) -> JsonResponse:
-    """GET /api/v1/mermas/ -> lista registros de mermas en bodega."""
-    if request.method != "GET":
-        return JsonResponse({"error": "Método no permitido."}, status=405)
+    """GET/POST /api/v1/mermas/ -> lista o registra mermas en bodega."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
 
-    mermas: list[dict[str, Any]] = []
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    m.id_merma,
-                    m.fecha,
-                    COALESCE(a.nombre, CONCAT('Artículo #', m.id_articulo::text)) AS articulo,
-                    COALESCE(
-                        NULLIF(TRIM(CONCAT(COALESCE(u.nombres, ''), ' ', COALESCE(u.apellidos, ''))), ''),
-                        u.usuario,
-                        'Sistema'
-                    ) AS responsable,
-                    m.cantidad,
-                    m.motivo,
-                    m.justificacion
-                FROM merma m
-                LEFT JOIN articulo a ON a.id_articulo = m.id_articulo
-                LEFT JOIN usuario u ON u.id_usuario = m.id_usuario
-                ORDER BY m.fecha DESC, m.id_merma DESC;
-                """
+    if request.method == "GET":
+        if "R" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (R)."},
+                status=403,
             )
-            for row in cursor.fetchall():
-                fecha_str = (
-                    row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1] or "")
-                )
-                mermas.append(
-                    {
-                        "id": row[0],
-                        "id_merma": row[0],
-                        "fecha": fecha_str,
-                        "fecha_hora": fecha_str,
-                        "articulo": row[2],
-                        "responsable": row[3],
-                        "cantidad": row[4],
-                        "motivo": row[5],
-                        "justificacion": row[6],
-                    }
-                )
-    except Exception:
-        mermas = []
 
-    return JsonResponse({"mermas": mermas, "total": len(mermas)}, status=200)
+        q = sanitize_text_input(str(request.GET.get("q", "")).strip()).lower()
+        motivo_filtro = sanitize_text_input(str(request.GET.get("motivo", "")).strip()).lower()
+        mermas = listar_mermas_sql()
+
+        if motivo_filtro and motivo_filtro not in ("todos", "todos los motivos"):
+            mermas = [
+                m for m in mermas if motivo_filtro in str(m.get("motivo", "")).lower()
+            ]
+        if q:
+            mermas = [
+                m
+                for m in mermas
+                if any(
+                    q in str(m.get(campo, "")).lower()
+                    for campo in ("id", "articulo", "responsable", "motivo", "justificacion")
+                )
+            ]
+
+        return JsonResponse({"mermas": mermas, "total": len(mermas)}, status=200)
+
+    if request.method == "POST":
+        if "C" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        id_articulo_raw = data.get("id_articulo")
+        id_articulo = None
+        if id_articulo_raw not in (None, ""):
+            try:
+                id_articulo = int(id_articulo_raw)
+            except (TypeError, ValueError):
+                id_articulo = None
+
+        articulo_nombre = sanitize_text_input(
+            str(
+                data.get("articulo")
+                or data.get("nombre_articulo")
+                or data.get("nombre")
+                or data.get("sku")
+                or ""
+            ).strip()
+        )
+        motivo = sanitize_text_input(
+            str(data.get("motivo", "Defecto de fábrica")).strip()
+        )
+        justificacion = sanitize_text_input(
+            str(data.get("justificacion", data.get("observacion", ""))).strip()
+        )
+        fecha_str = sanitize_text_input(
+            str(data.get("fecha", data.get("fecha_hora", ""))).strip()
+        )
+
+        try:
+            cantidad = int(data.get("cantidad", 0))
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "cantidad debe ser un entero válido."}, status=400)
+
+        if cantidad <= 0:
+            return JsonResponse(
+                {"error": "La cantidad afectada debe ser mayor a 0."}, status=400
+            )
+
+        jwt_payload = getattr(request, "jwt_payload", {}) or {}
+        usuario_ref = sanitize_text_input(
+            str(
+                data.get("usuario")
+                or jwt_payload.get("usuario")
+                or jwt_payload.get("sub")
+                or jwt_payload.get("email")
+                or ""
+            ).strip()
+        )
+
+        nueva_merma = _registrar_merma_sql(
+            id_articulo=id_articulo,
+            articulo_nombre=articulo_nombre,
+            cantidad=cantidad,
+            motivo=motivo,
+            justificacion=justificacion,
+            fecha_str=fecha_str or None,
+            usuario_ref=usuario_ref or None,
+            descontar_stock=True,
+        )
+        return JsonResponse(
+            {"merma": nueva_merma, "mensaje": "Merma registrada correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
 @csrf_exempt
@@ -898,9 +981,18 @@ def api_orquestar_movimiento(request: Any) -> JsonResponse:
     except json.JSONDecodeError:
         return JsonResponse({"error": "JSON inválido."}, status=400)
 
-    sku = sanitize_text_input(str(data.get("sku", "")).strip())
+    sku = sanitize_text_input(
+        str(data.get("sku", data.get("id_articulo", ""))).strip()
+    )
     tipo = sanitize_text_input(str(data.get("tipo", "")).strip()).upper()
     telemetria = data.get("telemetria") or {"temperatura_c": 4.2, "origen": "API_REST"}
+    if isinstance(telemetria, dict):
+        if data.get("motivo") and "motivo" not in telemetria:
+            telemetria["motivo"] = sanitize_text_input(str(data.get("motivo")).strip())
+        if data.get("justificacion") and "justificacion" not in telemetria:
+            telemetria["justificacion"] = sanitize_text_input(
+                str(data.get("justificacion")).strip()
+            )
     usuario = sanitize_text_input(str(data.get("usuario", "operador@fyag.cl")).strip())
 
     try:
