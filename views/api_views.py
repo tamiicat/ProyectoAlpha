@@ -1661,9 +1661,7 @@ def api_despachos(request: Any) -> JsonResponse:
                     ORDER BY id_despacho DESC;
                     """
                 )
-<<<<<<< HEAD
                 for row in cursor.fetchall():
-=======
                 mapa_clientes = {r[0]: r[1] for r in cursor.fetchall()}
 
                 cursor.execute("SELECT * FROM obra;")
@@ -1716,7 +1714,6 @@ def api_despachos(request: Any) -> JsonResponse:
 
                     f_desp = rec.get("fecha_despacho") or rec.get("fecha") or ""
                     f_ent = rec.get("fecha_entrega") or ""
->>>>>>> db88d23859c6b9c7e3734048dbf113add11105fc
                     despachos.append(
                         {
                             "id": row[0],
@@ -1754,9 +1751,7 @@ def api_despachos(request: Any) -> JsonResponse:
             status=201,
         )
 
-<<<<<<< HEAD
     return JsonResponse({"error": "Método no permitido."}, status=405)
-=======
 
 @csrf_exempt
 @require_rbac("inventario_bodega", "U")
@@ -1777,16 +1772,24 @@ def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
     try:
         cols_desp = _columnas_tabla_pg("despacho")
         pk_col = "id_despacho" if "id_despacho" in cols_desp else "id"
+        id_usr = _resolver_id_usuario_despacho(request) or 1
         with connection.cursor() as cursor:
+            cursor.execute("BEGIN;")
+            cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
             cursor.execute(
                 f"UPDATE despacho SET estado = %s WHERE {pk_col} = %s;",
                 [nuevo_estado, id_despacho],
             )
+            cursor.execute("COMMIT;")
         return JsonResponse({"id_despacho": id_despacho, "estado": nuevo_estado}, status=200)
     except Exception as exc:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("ROLLBACK;")
+        except Exception:
+            pass
         return JsonResponse(
             {"error": f"Error PostgreSQL al actualizar despacho: {exc}"},
             status=500,
         )
-
 
