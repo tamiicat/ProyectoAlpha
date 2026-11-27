@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import TourAyuda from './TourAyuda';
 
 const CONFIG_ROLES = {
   admin: {
@@ -317,6 +318,9 @@ export default function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Guía interactiva en todos los módulos */}
+      <TourAyuda rol={rolKey} autoIniciar={false} />
     </div>
   );
 }
