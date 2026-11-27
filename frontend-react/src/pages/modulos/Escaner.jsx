@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Html5Qrcode } from 'html5-qrcode';
 import { apiFetch } from '../../services/api';
 
 export default function Escaner() {
     const navigate = useNavigate();
+    const inputRef = useRef(null);
+    const scannerRef = useRef(null);
 
     const [codigoInput, setCodigoInput] = useState('');
     const [articuloDetectado, setArticuloDetectado] = useState(null);
@@ -12,9 +15,26 @@ export default function Escaner() {
     const [buscando, setBuscando] = useState(false);
     const [confirmando, setConfirmando] = useState(false);
 
+    // Cámara
+    const [camaraActiva, setCamaraActiva] = useState(false);
+    const [errorCamara, setErrorCamara] = useState('');
+
+    // Historial de lecturas de la sesión
+    const [historial, setHistorial] = useState([]);
+
     // Campos para registrar el movimiento en Cardex tras la lectura
     const [tipoMovimiento, setTipoMovimiento] = useState('ingreso');
     const [cantidad, setCantidad] = useState(1);
+
+    // Limpiar cámara al desmontar el componente
+    useEffect(() => {
+        return () => {
+            if (scannerRef.current) {
+                scannerRef.current.stop().catch(() => {});
+                scannerRef.current = null;
+            }
+        };
+    }, []);
 
     const normalizarArticulo = (item) => ({
         id_articulo: item.id_articulo ?? item.id ?? '-',
@@ -30,8 +50,50 @@ export default function Escaner() {
         activo: item.activo !== undefined ? Boolean(item.activo) : true
     });
 
+    const detenerCamara = async () => {
+        if (scannerRef.current) {
+            try {
+                await scannerRef.current.stop();
+            } catch {
+                // Ignorar si ya estaba detenida
+            }
+            scannerRef.current = null;
+        }
+        setCamaraActiva(false);
+    };
+
+    const iniciarCamara = async () => {
+        setErrorCamara('');
+        setCamaraActiva(true);
+
+        // Esperar a que el contenedor exista en el DOM
+        setTimeout(async () => {
+            try {
+                const html5QrCode = new Html5Qrcode('lector-camara-fyag');
+                scannerRef.current = html5QrCode;
+
+                await html5QrCode.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: { width: 260, height: 140 } },
+                    async (decodedText) => {
+                        await detenerCamara();
+                        buscarPorCodigo(decodedText.slice(0, 20));
+                    },
+                    () => {
+                        // Errores por frame sin código se ignoran
+                    }
+                );
+            } catch (err) {
+                setCamaraActiva(false);
+                setErrorCamara(
+                    'No se pudo iniciar la cámara. Verifica los permisos del navegador o usa el lector manual / USB.'
+                );
+            }
+        }, 150);
+    };
+
     const buscarPorCodigo = async (codigo) => {
-        const limpio = codigo.trim();
+        const limpio = String(codigo || '').trim();
         setCodigoInput(limpio);
         setErrorConsulta('');
 
@@ -50,14 +112,30 @@ export default function Escaner() {
 
             const encontrado = lista.find(
                 (art) =>
-                    String(art.codigo_de_barras ?? '').trim() === limpio ||
-                    String(art.sku ?? '').trim() === limpio
-            ) || lista[0];
+                    String(art.codigo_de_barras ?? '').trim().toLowerCase() === limpio.toLowerCase() ||
+                    String(art.sku ?? '').trim().toLowerCase() === limpio.toLowerCase()
+            );
 
             if (encontrado) {
-                setArticuloDetectado(normalizarArticulo(encontrado));
+                const normalizado = normalizarArticulo(encontrado);
+                setArticuloDetectado(normalizado);
                 setNoEncontrado(false);
                 setCantidad(1);
+
+                setHistorial((prev) => {
+                    const sinDuplicado = prev.filter((h) => h.codigo !== normalizado.codigo_de_barras);
+                    return [
+                        {
+                            codigo: normalizado.codigo_de_barras,
+                            nombre: normalizado.nombre,
+                            ubicacion: normalizado.ubicacion_nombre,
+                            stock: normalizado.stock_actual,
+                            unidad: normalizado.unidad_de_medida,
+                            hora: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+                        },
+                        ...sinDuplicado
+                    ].slice(0, 6);
+                });
             } else {
                 setArticuloDetectado(null);
                 setNoEncontrado(true);
@@ -120,6 +198,12 @@ export default function Escaner() {
                 estado: nuevoEstado
             }));
 
+            setHistorial((prev) =>
+                prev.map((h) =>
+                    h.codigo === articuloDetectado.codigo_de_barras ? { ...h, stock: nuevoStock } : h
+                )
+            );
+
             alert(
                 `${tipoMovimiento === 'ingreso' ? 'Ingreso' : 'Salida'} confirmado en el servidor. Nuevo stock de "${articuloDetectado.nombre}": ${nuevoStock} ${articuloDetectado.unidad_de_medida}.`
             );
@@ -136,18 +220,19 @@ export default function Escaner() {
         setNoEncontrado(false);
         setErrorConsulta('');
         setCantidad(1);
+        inputRef.current?.focus();
     };
 
     return (
-        <div className="container-xl mt-5 mb-5">
-            <div className="shadow-lg" style={{ borderRadius: '25px', overflow: 'hidden', maxWidth: '850px', margin: '0 auto' }}>
+        <div className="container-xl mt-4 mb-5">
+            <div className="shadow-lg" style={{ borderRadius: '25px', overflow: 'hidden', maxWidth: '900px', margin: '0 auto' }}>
                 {/* Header corporativo */}
                 <div className="d-flex flex-column flex-md-row justify-content-between align-items-center p-4 px-5" style={{ backgroundColor: '#2b3d52', color: 'white' }}>
                     <div className="d-flex align-items-center mb-3 mb-md-0">
                         <img src="/img/logo-fyag.png" alt="Logo FYAG" style={{ height: '60px', objectFit: 'contain' }} />
                         <div className="ms-4">
                             <h3 className="mb-0 fw-semibold">Escáner de Código de Barras</h3>
-                            <span className="small opacity-75">Lectura de artículos y ajuste rápido en terreno</span>
+                            <span className="small opacity-75">Lectura con cámara, pistola USB o ingreso manual</span>
                         </div>
                     </div>
                     <div>
@@ -160,20 +245,39 @@ export default function Escaner() {
                 {/* Contenido */}
                 <div className="bg-white p-4 p-md-5 border-top-0">
                     <div className="row justify-content-center">
-                        <div className="col-12 col-md-9">
-                            {/* Lector USB / entrada manual */}
-                            <form onSubmit={handleBuscarSubmit} className="mb-4">
-                                <label className="form-label small text-muted fw-bold">Código de Barras (máx. 20 caracteres)</label>
+                        <div className="col-12 col-md-10">
+                            {/* Lector USB / entrada manual + Botón Cámara */}
+                            <form onSubmit={handleBuscarSubmit} className="mb-3">
+                                <div className="d-flex justify-content-between align-items-center mb-1">
+                                    <label className="form-label small text-muted fw-bold mb-0">
+                                        Código de Barras (máx. 20 caracteres · EAN-13, UPC, Code 128 o interno)
+                                    </label>
+                                </div>
                                 <div className="input-group shadow-sm">
+                                    <span className="input-group-text bg-light border-light text-muted">
+                                        <i className="bi bi-upc-scan"></i>
+                                    </span>
                                     <input
+                                        ref={inputRef}
                                         type="text"
+                                        autoFocus
                                         maxLength={20}
                                         disabled={buscando || confirmando}
                                         value={codigoInput}
                                         onChange={(e) => setCodigoInput(e.target.value)}
                                         className="form-control bg-light border-light"
-                                        placeholder="Escanee o escriba el código de barras..."
+                                        placeholder="Escanee con pistola USB o escriba el código..."
                                     />
+                                    <button
+                                        type="button"
+                                        disabled={buscando || confirmando}
+                                        onClick={camaraActiva ? detenerCamara : iniciarCamara}
+                                        className={`btn fw-semibold ${camaraActiva ? 'btn-danger' : 'btn-outline-secondary'}`}
+                                        title="Escanear usando la cámara"
+                                    >
+                                        <i className={`bi ${camaraActiva ? 'bi-camera-video-off' : 'bi-camera'} me-1`}></i>
+                                        {camaraActiva ? 'Cerrar Cámara' : 'Usar Cámara'}
+                                    </button>
                                     <button
                                         type="submit"
                                         disabled={buscando || confirmando}
@@ -185,6 +289,22 @@ export default function Escaner() {
                                 </div>
                             </form>
 
+                            {/* Contenedor de Cámara en vivo */}
+                            {camaraActiva && (
+                                <div className="card border-0 bg-dark text-white p-3 mb-4 rounded-4 text-center">
+                                    <small className="mb-2 opacity-75">
+                                        Apunta la cámara al código de barras o QR del producto
+                                    </small>
+                                    <div id="lector-camara-fyag" style={{ width: '100%', maxWidth: '420px', margin: '0 auto' }} />
+                                </div>
+                            )}
+
+                            {errorCamara && (
+                                <div className="alert alert-warning small shadow-sm" role="alert">
+                                    <i className="bi bi-camera-video-off me-2"></i>{errorCamara}
+                                </div>
+                            )}
+
                             {errorConsulta && (
                                 <div className="alert alert-danger shadow-sm" role="alert">
                                     {errorConsulta}
@@ -193,34 +313,52 @@ export default function Escaner() {
 
                             {/* Alerta si el código no existe */}
                             {noEncontrado && (
-                                <div className="alert alert-warning d-flex justify-content-between align-items-center shadow-sm" role="alert">
+                                <div className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2 shadow-sm" role="alert">
                                     <div className="small">
                                         <strong>Código no registrado:</strong> No existe un artículo con el código <code>{codigoInput}</code>.
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleRechazar}
-                                        className="btn btn-sm btn-outline-dark ms-2"
-                                    >
-                                        Limpiar
-                                    </button>
+                                    <div className="d-flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate('/gestionar-inventario')}
+                                            className="btn btn-sm text-white fw-semibold"
+                                            style={{ backgroundColor: '#2b3d52' }}
+                                        >
+                                            <i className="bi bi-plus-circle me-1"></i>Crear artículo
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleRechazar}
+                                            className="btn btn-sm btn-outline-dark"
+                                        >
+                                            Limpiar
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 
                             {/* Formulario de Resultados de Lectura */}
                             {articuloDetectado && (
-                                <div className="card shadow-sm border-0 bg-light p-4" style={{ borderRadius: '15px' }}>
-                                    <div className="d-flex justify-content-between align-items-center mb-3">
-                                        <h5 className="fw-bold text-secondary mb-0">Lectura Detectada</h5>
-                                        {articuloDetectado.estado === 'en bodega' ? (
-                                            <span className="badge bg-success bg-opacity-10 text-success border border-success">
-                                                En bodega
-                                            </span>
-                                        ) : (
-                                            <span className="badge bg-danger bg-opacity-10 text-danger border border-danger">
-                                                Sin stock
-                                            </span>
-                                        )}
+                                <div className="card shadow-sm border-0 bg-light p-4 mb-4" style={{ borderRadius: '15px' }}>
+                                    <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                                        <div>
+                                            <h5 className="fw-bold text-secondary mb-0">Lectura Detectada</h5>
+                                            <small className="text-muted">Código: {articuloDetectado.codigo_de_barras}</small>
+                                        </div>
+                                        <div className="d-flex align-items-center gap-2">
+                                            {articuloDetectado.stock_actual <= articuloDetectado.stock_critico && (
+                                                <span className="badge bg-warning text-dark">Stock Crítico</span>
+                                            )}
+                                            {articuloDetectado.estado === 'en bodega' ? (
+                                                <span className="badge bg-success bg-opacity-10 text-success border border-success">
+                                                    En bodega
+                                                </span>
+                                            ) : (
+                                                <span className="badge bg-danger bg-opacity-10 text-danger border border-danger">
+                                                    Sin stock
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <form onSubmit={handleConfirmarMovimiento}>
@@ -305,12 +443,56 @@ export default function Escaner() {
                                                 className="btn btn-outline-danger w-50 fw-bold shadow-sm py-2"
                                                 style={{ borderRadius: '10px' }}
                                             >
-                                                Rechazar
+                                                Limpiar
                                             </button>
                                         </div>
                                     </form>
                                 </div>
                             )}
+
+                            {/* Historial de lecturas de la sesión */}
+                            <div className="mt-4 pt-3 border-top">
+                                <h6 className="fw-bold text-secondary mb-3">
+                                    <i className="bi bi-clock-history me-2"></i>Lecturas Recientes en esta Sesión
+                                </h6>
+                                {historial.length === 0 ? (
+                                    <div className="text-center text-muted small py-3 bg-light rounded-3">
+                                        Aún no has escaneado artículos. Usa la cámara, una pistola USB o escribe un código arriba.
+                                    </div>
+                                ) : (
+                                    <div className="table-responsive rounded border">
+                                        <table className="table table-sm table-hover align-middle mb-0">
+                                            <thead className="table-light">
+                                                <tr>
+                                                    <th className="ps-3">Hora</th>
+                                                    <th>Código</th>
+                                                    <th>Artículo</th>
+                                                    <th>Bodega</th>
+                                                    <th className="text-end pe-3">Stock</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {historial.map((h) => (
+                                                    <tr
+                                                        key={h.codigo}
+                                                        style={{ cursor: 'pointer' }}
+                                                        onClick={() => buscarPorCodigo(h.codigo)}
+                                                        title="Clic para volver a cargar"
+                                                    >
+                                                        <td className="ps-3 text-muted small">{h.hora}</td>
+                                                        <td><code>{h.codigo}</code></td>
+                                                        <td className="fw-semibold">{h.nombre}</td>
+                                                        <td className="small text-muted">{h.ubicacion}</td>
+                                                        <td className="text-end pe-3 fw-bold">
+                                                            {h.stock} <span className="fw-normal text-muted small">{h.unidad}</span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
