@@ -2049,9 +2049,13 @@ def api_despachos(request: Any) -> JsonResponse:
 @csrf_exempt
 def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
     """PUT/PATCH/DELETE /api/v1/usuarios/<id_usuario>/ -> actualiza o desactiva usuario."""
+    from django.db import transaction
+
     role = getattr(request, "jwt_role", None)
     if not role:
         return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    id_usr = _resolver_id_usuario_despacho(request) or 1
 
     if request.method in ("PUT", "PATCH"):
         if "U" not in RBAC_MATRIX.get(role, {}).get("usuarios_roles", set()):
@@ -2112,25 +2116,28 @@ def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
             rol_nombre = sanitize_text_input(str(data.get("rol", data.get("role", ""))).strip()).upper()
 
         try:
-            with connection.cursor() as cursor:
-                if rol_nombre:
-                    cursor.execute(
-                        "SELECT id_rol FROM rol WHERE UPPER(nombre) = %s AND activo = TRUE LIMIT 1;",
-                        [rol_nombre],
-                    )
-                    row_rol = cursor.fetchone()
-                    if row_rol and row_rol[0] is not None:
-                        campos_sql.append("id_rol = %s")
-                        valores_sql.append(int(row_rol[0]))
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
 
-                if campos_sql:
-                    valores_sql.append(id_usuario)
-                    cursor.execute(
-                        f"UPDATE usuario SET {', '.join(campos_sql)} WHERE id_usuario = %s;",
-                        valores_sql,
-                    )
-                    if cursor.rowcount == 0:
-                        return JsonResponse({"error": "Usuario no encontrado."}, status=404)
+                    if rol_nombre:
+                        cursor.execute(
+                            "SELECT id_rol FROM rol WHERE UPPER(nombre) = %s AND activo = TRUE LIMIT 1;",
+                            [rol_nombre],
+                        )
+                        row_rol = cursor.fetchone()
+                        if row_rol and row_rol[0] is not None:
+                            campos_sql.append("id_rol = %s")
+                            valores_sql.append(int(row_rol[0]))
+
+                    if campos_sql:
+                        valores_sql.append(id_usuario)
+                        cursor.execute(
+                            f"UPDATE usuario SET {', '.join(campos_sql)} WHERE id_usuario = %s;",
+                            valores_sql,
+                        )
+                        if cursor.rowcount == 0:
+                            return JsonResponse({"error": "Usuario no encontrado."}, status=404)
         except Exception as exc:
             return JsonResponse({"error": f"Error al actualizar usuario: {exc}"}, status=500)
 
@@ -2147,13 +2154,15 @@ def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
             )
 
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE usuario SET activo = FALSE WHERE id_usuario = %s;",
-                    [id_usuario],
-                )
-                if cursor.rowcount == 0:
-                    return JsonResponse({"error": "Usuario no encontrado."}, status=404)
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
+                    cursor.execute(
+                        "UPDATE usuario SET activo = FALSE WHERE id_usuario = %s;",
+                        [id_usuario],
+                    )
+                    if cursor.rowcount == 0:
+                        return JsonResponse({"error": "Usuario no encontrado."}, status=404)
         except Exception as exc:
             return JsonResponse({"error": f"Error al desactivar usuario: {exc}"}, status=500)
 
@@ -2163,7 +2172,6 @@ def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
         )
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
-
 
 @csrf_exempt
 @require_rbac("inventario_bodega", "U")
