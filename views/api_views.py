@@ -489,7 +489,8 @@ def api_clientes(request: Any) -> JsonResponse:
                     """
                     SELECT
                         id_cliente,
-                        nombre_razon_social,
+                        nombres,
+                        apellidos,
                         rut,
                         correo_electronico,
                         telefono,
@@ -500,25 +501,32 @@ def api_clientes(request: Any) -> JsonResponse:
                     """
                 )
                 for row in cursor.fetchall():
-                    activo_bool = bool(row[6]) if row[6] is not None else True
+                    nombres_val = row[1] or ""
+                    apellidos_val = row[2] or ""
+                    nombre_completo = f"{nombres_val} {apellidos_val}".strip()
+                    activo_bool = bool(row[7]) if row[7] is not None else True
                     item = {
                         "id": row[0],
                         "id_cliente": row[0],
-                        "nombre_razon_social": row[1] or "",
-                        "razon_social": row[1] or "",
-                        "nombre": row[1] or "",
-                        "rut": row[2] or "",
-                        "correo_electronico": row[3] or "",
-                        "correo": row[3] or "",
-                        "email": row[3] or "",
-                        "telefono": row[4] or "",
-                        "direccion": row[5] or "",
+                        "nombres": nombres_val,
+                        "apellidos": apellidos_val,
+                        "nombre_razon_social": nombre_completo,
+                        "razon_social": nombre_completo,
+                        "nombre": nombre_completo,
+                        "rut": row[3] or "",
+                        "correo_electronico": row[4] or "",
+                        "correo": row[4] or "",
+                        "email": row[4] or "",
+                        "telefono": row[5] or "",
+                        "direccion": row[6] or "",
                         "activo": activo_bool,
                         "estado": "Activo" if activo_bool else "Inactivo",
                     }
                     if not q or any(
                         q in str(item[campo]).lower()
                         for campo in (
+                            "nombres",
+                            "apellidos",
                             "nombre_razon_social",
                             "rut",
                             "correo_electronico",
@@ -527,8 +535,10 @@ def api_clientes(request: Any) -> JsonResponse:
                         )
                     ):
                         clientes.append(item)
-        except Exception:
-            clientes = []
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al consultar clientes en BD: {exc}"}, status=500
+            )
 
         return JsonResponse(
             {"clientes": clientes, "total": len(clientes)}, status=200
@@ -550,14 +560,27 @@ def api_clientes(request: Any) -> JsonResponse:
         except json.JSONDecodeError:
             return JsonResponse({"error": "JSON inválido."}, status=400)
 
-        nombre_razon_social = sanitize_text_input(
+        nombres_raw = sanitize_text_input(
             str(
                 data.get(
-                    "nombre_razon_social",
-                    data.get("razon_social", data.get("nombre", "")),
+                    "nombres",
+                    data.get(
+                        "nombre_razon_social",
+                        data.get("razon_social", data.get("nombre", "")),
+                    ),
                 )
             ).strip()
         )
+        apellidos_raw = sanitize_text_input(str(data.get("apellidos", "")).strip())
+
+        if not apellidos_raw and " " in nombres_raw:
+            partes = nombres_raw.split(" ", 1)
+            nombres = partes[0].strip()
+            apellidos = partes[1].strip()
+        else:
+            nombres = nombres_raw
+            apellidos = apellidos_raw or "-"
+
         rut = sanitize_text_input(str(data.get("rut", "")).strip())
         correo = sanitize_text_input(
             str(
@@ -567,24 +590,24 @@ def api_clientes(request: Any) -> JsonResponse:
         telefono = sanitize_text_input(str(data.get("telefono", "")).strip())
         direccion = sanitize_text_input(str(data.get("direccion", "")).strip())
 
-        if not nombre_razon_social or not rut:
+        if not nombres or not rut:
             return JsonResponse(
                 {"error": "Nombre/Razón social y RUT son obligatorios."}, status=400
             )
 
-        id_cliente_bd = None
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
                     INSERT INTO cliente (
-                        nombre_razon_social, rut, correo_electronico, telefono, direccion, activo
+                        nombres, apellidos, rut, correo_electronico, telefono, direccion, activo
                     )
-                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE)
                     RETURNING id_cliente;
                     """,
                     [
-                        nombre_razon_social[:150],
+                        nombres[:100],
+                        apellidos[:100],
                         rut[:20],
                         correo[:120],
                         telefono[:30],
@@ -592,15 +615,20 @@ def api_clientes(request: Any) -> JsonResponse:
                     ],
                 )
                 id_cliente_bd = int(cursor.fetchone()[0])
-        except Exception:
-            id_cliente_bd = None
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al guardar cliente en BD: {exc}"}, status=500
+            )
 
+        nombre_completo = f"{nombres} {apellidos}".strip()
         nuevo_cliente = {
             "id": id_cliente_bd,
             "id_cliente": id_cliente_bd,
-            "nombre_razon_social": nombre_razon_social,
-            "razon_social": nombre_razon_social,
-            "nombre": nombre_razon_social,
+            "nombres": nombres,
+            "apellidos": apellidos,
+            "nombre_razon_social": nombre_completo,
+            "razon_social": nombre_completo,
+            "nombre": nombre_completo,
             "rut": rut,
             "correo_electronico": correo,
             "correo": correo,
