@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../services/api';
 
 export default function ReporteFinanciero() {
-    const navigate = useNavigate();
-
     const [registros, setRegistros] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
     const [filtroTipo, setFiltroTipo] = useState('');
     const [busqueda, setBusqueda] = useState('');
     const [seleccionados, setSeleccionados] = useState([]);
+
+    // Paginación y cantidad visible
+    const [filasPorPagina, setFilasPorPagina] = useState(10);
+    const [paginaActual, setPaginaActual] = useState(1);
 
     const cargarRegistros = async () => {
         setCargando(true);
@@ -51,6 +52,10 @@ export default function ReporteFinanciero() {
         cargarRegistros();
     }, []);
 
+    useEffect(() => {
+        setPaginaActual(1);
+    }, [busqueda, filtroTipo, filasPorPagina]);
+
     const formatearCLP = (valor) => {
         return new Intl.NumberFormat('es-CL', {
             style: 'currency',
@@ -70,7 +75,13 @@ export default function ReporteFinanciero() {
         return coincideTipo && coincideBusqueda;
     });
 
-    // Totales calculados dinámicamente sobre los registros visibles
+    const totalPaginas = Math.max(1, Math.ceil(registrosFiltrados.length / filasPorPagina));
+    const paginaSegura = Math.min(paginaActual, totalPaginas);
+    const indiceInicio = (paginaSegura - 1) * filasPorPagina;
+    const indiceFin = Math.min(indiceInicio + filasPorPagina, registrosFiltrados.length);
+    const registrosPaginados = registrosFiltrados.slice(indiceInicio, indiceFin);
+
+    // Totales calculados dinámicamente sobre los registros filtrados
     const totalIngresos = registrosFiltrados
         .filter((r) => r.tipo === 'ingreso')
         .reduce((acc, r) => acc + r.monto_bruto, 0);
@@ -81,16 +92,18 @@ export default function ReporteFinanciero() {
 
     const balanceNeto = totalIngresos - totalEgresos;
 
-    // Lógica de selección individual y masiva
+    // Lógica de selección individual y masiva (sobre los registros visibles en la página actual)
     const todosSeleccionados =
-        registrosFiltrados.length > 0 &&
-        registrosFiltrados.every((r) => seleccionados.includes(r.id_registro));
+        registrosPaginados.length > 0 &&
+        registrosPaginados.every((r) => seleccionados.includes(r.id_registro));
 
     const handleToggleTodos = () => {
         if (todosSeleccionados) {
-            setSeleccionados([]);
+            const idsPagina = registrosPaginados.map((r) => r.id_registro);
+            setSeleccionados((prev) => prev.filter((id) => !idsPagina.includes(id)));
         } else {
-            setSeleccionados(registrosFiltrados.map((r) => r.id_registro));
+            const idsPagina = registrosPaginados.map((r) => r.id_registro);
+            setSeleccionados((prev) => Array.from(new Set([...prev, ...idsPagina])));
         }
     };
 
@@ -164,11 +177,6 @@ export default function ReporteFinanciero() {
                             <span className="small opacity-75">Balance de ingresos y egresos de inventario</span>
                         </div>
                     </div>
-                    <div className="d-print-none">
-                        <button type="button" onClick={() => navigate(-1)} className="btn btn-outline-light rounded-pill px-4 fw-semibold">
-                            Volver al menú
-                        </button>
-                    </div>
                 </div>
 
                 <div className="bg-white p-4 p-md-5 border-top-0">
@@ -207,7 +215,7 @@ export default function ReporteFinanciero() {
                     </div>
 
                     {/* Filtros (ocultos al imprimir) */}
-                    <div className="row g-3 mb-4 d-print-none">
+                    <div className="row g-3 mb-3 d-print-none">
                         <div className="col-12 col-md-8">
                             <input
                                 type="text"
@@ -230,8 +238,28 @@ export default function ReporteFinanciero() {
                         </div>
                     </div>
 
+                    {/* Selector de cantidad por página */}
+                    <div className="d-flex justify-content-end align-items-center gap-2 mb-3 d-print-none">
+                        <label htmlFor="selectFilasReporte" className="small text-muted fw-semibold mb-0">
+                            Mostrar:
+                        </label>
+                        <select
+                            id="selectFilasReporte"
+                            value={filasPorPagina}
+                            onChange={(e) => setFilasPorPagina(Number(e.target.value))}
+                            className="form-select form-select-sm bg-light border-secondary-subtle fw-semibold"
+                            style={{ width: 'auto', minHeight: '36px' }}
+                        >
+                            <option value={10}>10</option>
+                            <option value={15}>15</option>
+                            <option value={25}>25</option>
+                            <option value={50}>50</option>
+                        </select>
+                        <span className="small text-muted">por página</span>
+                    </div>
+
                     {/* Tabla con selección por checkbox */}
-                    <div className="table-responsive shadow-sm rounded border mb-4">
+                    <div className="table-responsive shadow-sm rounded border mb-3">
                         <table className="table table-hover align-middle mb-0">
                             <thead style={{ backgroundColor: '#f4f6f8', color: '#2b3d52' }}>
                                 <tr>
@@ -241,7 +269,7 @@ export default function ReporteFinanciero() {
                                             className="form-check-input"
                                             checked={todosSeleccionados}
                                             onChange={handleToggleTodos}
-                                            title="Seleccionar todos"
+                                            title="Seleccionar todos en esta página"
                                         />
                                     </th>
                                     <th className="py-3">ID / Doc.</th>
@@ -260,7 +288,7 @@ export default function ReporteFinanciero() {
                                             Cargando reporte financiero desde el servidor...
                                         </td>
                                     </tr>
-                                ) : registrosFiltrados.length === 0 ? (
+                                ) : registrosPaginados.length === 0 ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
                                             {errorCarga
@@ -269,7 +297,7 @@ export default function ReporteFinanciero() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    registrosFiltrados.map((reg) => {
+                                    registrosPaginados.map((reg) => {
                                         const estaSeleccionado = seleccionados.includes(reg.id_registro);
                                         return (
                                             <tr
@@ -317,8 +345,39 @@ export default function ReporteFinanciero() {
                         </table>
                     </div>
 
+                    {/* Controles de paginación */}
+                    {!cargando && registrosFiltrados.length > 0 && (
+                        <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3 mb-4 pt-2 d-print-none">
+                            <span className="small text-muted">
+                                Mostrando <strong>{indiceInicio + 1}–{indiceFin}</strong> de{' '}
+                                <strong>{registrosFiltrados.length}</strong> registros
+                            </span>
+                            <div className="d-flex align-items-center gap-2">
+                                <button
+                                    type="button"
+                                    disabled={paginaSegura <= 1}
+                                    onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                                    className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                >
+                                    <i className="bi bi-chevron-left me-1"></i> Anterior
+                                </button>
+                                <span className="small fw-semibold px-2" style={{ color: '#2b3d52' }}>
+                                    Página {paginaSegura} de {totalPaginas}
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={paginaSegura >= totalPaginas}
+                                    onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
+                                    className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                >
+                                    Siguiente <i className="bi bi-chevron-right ms-1"></i>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Barra inferior de estado de selección y botones de exportación */}
-                    <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3 d-print-none">
+                    <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3 pt-3 border-top d-print-none">
                         <div className="small text-muted fw-semibold">
                             {seleccionados.length === 0 ? (
                                 <span>Seleccione uno o más registros de la tabla para exportar.</span>

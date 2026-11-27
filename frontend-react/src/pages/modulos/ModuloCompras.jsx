@@ -14,6 +14,10 @@ export default function ModuloCompras() {
     const [aviso, setAviso] = useState(null);
     const [guardando, setGuardando] = useState(false);
 
+    // Paginación de compras registradas
+    const [filasPorPagina, setFilasPorPagina] = useState(10);
+    const [paginaActual, setPaginaActual] = useState(1);
+
     // Estado de cabecera (Factura)
     const [formData, setFormData] = useState({
         id_proveedor: '',
@@ -120,6 +124,16 @@ export default function ModuloCompras() {
     useEffect(() => {
         cargarComprasYCatalogos();
     }, []);
+
+    useEffect(() => {
+        setPaginaActual(1);
+    }, [filasPorPagina]);
+
+    const totalPaginas = Math.max(1, Math.ceil(compras.length / filasPorPagina));
+    const paginaSegura = Math.min(paginaActual, totalPaginas);
+    const indiceInicio = (paginaSegura - 1) * filasPorPagina;
+    const indiceFin = Math.min(indiceInicio + filasPorPagina, compras.length);
+    const comprasPaginadas = compras.slice(indiceInicio, indiceFin);
 
     const formatearCLP = (valor) => {
         return new Intl.NumberFormat('es-CL', {
@@ -503,7 +517,28 @@ export default function ModuloCompras() {
                     </div>
 
                     {/* Tabla de Compras Registradas */}
-                    <h5 className="fw-bold mb-3" style={{ color: '#2b3d52' }}>Compras Registradas</h5>
+                    <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
+                        <h5 className="fw-bold mb-0" style={{ color: '#2b3d52' }}>Compras Registradas</h5>
+                        <div className="d-flex align-items-center gap-2">
+                            <label htmlFor="selectFilasCompras" className="small text-muted fw-semibold mb-0">
+                                Mostrar:
+                            </label>
+                            <select
+                                id="selectFilasCompras"
+                                value={filasPorPagina}
+                                onChange={(e) => setFilasPorPagina(Number(e.target.value))}
+                                className="form-select form-select-sm bg-light border-secondary-subtle fw-semibold"
+                                style={{ width: 'auto', minHeight: '36px' }}
+                            >
+                                <option value={10}>10</option>
+                                <option value={15}>15</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                            </select>
+                            <span className="small text-muted">por página</span>
+                        </div>
+                    </div>
+
                     <div className="table-responsive shadow-sm rounded border">
                         <table className="table table-hover align-middle mb-0">
                             <thead style={{ backgroundColor: '#f4f6f8', color: '#2b3d52' }}>
@@ -525,7 +560,7 @@ export default function ModuloCompras() {
                                             Cargando compras desde el servidor...
                                         </td>
                                     </tr>
-                                ) : compras.length === 0 ? (
+                                ) : comprasPaginadas.length === 0 ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
                                             {errorCarga
@@ -534,7 +569,7 @@ export default function ModuloCompras() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    compras.map((compra) => (
+                                    comprasPaginadas.map((compra) => (
                                         <tr key={compra.id_factura}>
                                             <td className="px-4">
                                                 <div className="fw-semibold text-dark">{compra.numero}</div>
@@ -561,6 +596,37 @@ export default function ModuloCompras() {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Controles de paginación */}
+                    {!cargando && compras.length > 0 && (
+                        <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3 mt-4 pt-3 border-top">
+                            <span className="small text-muted">
+                                Mostrando <strong>{indiceInicio + 1}–{indiceFin}</strong> de{' '}
+                                <strong>{compras.length}</strong> compras
+                            </span>
+                            <div className="d-flex align-items-center gap-2">
+                                <button
+                                    type="button"
+                                    disabled={paginaSegura <= 1}
+                                    onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                                    className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                >
+                                    <i className="bi bi-chevron-left me-1"></i> Anterior
+                                </button>
+                                <span className="small fw-semibold px-2" style={{ color: '#2b3d52' }}>
+                                    Página {paginaSegura} de {totalPaginas}
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={paginaSegura >= totalPaginas}
+                                    onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
+                                    className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                >
+                                    Siguiente <i className="bi bi-chevron-right ms-1"></i>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 

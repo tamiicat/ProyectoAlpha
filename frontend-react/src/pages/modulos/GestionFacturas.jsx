@@ -19,6 +19,10 @@ export default function GestionFacturas() {
     const [facturaDetalle, setFacturaDetalle] = useState(null);
     const [mostrarModalNueva, setMostrarModalNueva] = useState(false);
 
+    // Paginación
+    const [filasPorPagina, setFilasPorPagina] = useState(10);
+    const [paginaActual, setPaginaActual] = useState(1);
+
     const [nuevaFactura, setNuevaFactura] = useState({
         id_proveedor: '',
         id_ubicacion: '',
@@ -123,6 +127,10 @@ export default function GestionFacturas() {
         cargarFacturasYCatalogos();
     }, []);
 
+    useEffect(() => {
+        setPaginaActual(1);
+    }, [busqueda, filasPorPagina]);
+
     const formatearCLP = (valor) => {
         return new Intl.NumberFormat('es-CL', {
             style: 'currency',
@@ -140,6 +148,12 @@ export default function GestionFacturas() {
             String(fac.id_factura).includes(termino)
         );
     });
+
+    const totalPaginas = Math.max(1, Math.ceil(facturasFiltradas.length / filasPorPagina));
+    const paginaSegura = Math.min(paginaActual, totalPaginas);
+    const indiceInicio = (paginaSegura - 1) * filasPorPagina;
+    const indiceFin = Math.min(indiceInicio + filasPorPagina, facturasFiltradas.length);
+    const facturasPaginadas = facturasFiltradas.slice(indiceInicio, indiceFin);
 
     const handleSeleccionarArticulo = (e) => {
         const idArt = e.target.value;
@@ -314,8 +328,8 @@ export default function GestionFacturas() {
                         </div>
                     )}
 
-                    <div className="row mb-4">
-                        <div className="col-12 col-md-6">
+                    <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+                        <div className="w-100" style={{ maxWidth: '480px' }}>
                             <input
                                 type="text"
                                 value={busqueda}
@@ -326,6 +340,24 @@ export default function GestionFacturas() {
                                 className="form-control bg-light border-light shadow-sm"
                                 placeholder="Buscar por N° de factura, proveedor o bodega..."
                             />
+                        </div>
+                        <div className="d-flex align-items-center gap-2">
+                            <label htmlFor="selectFilasFacturas" className="small text-muted fw-semibold mb-0">
+                                Mostrar:
+                            </label>
+                            <select
+                                id="selectFilasFacturas"
+                                value={filasPorPagina}
+                                onChange={(e) => setFilasPorPagina(Number(e.target.value))}
+                                className="form-select form-select-sm bg-light border-secondary-subtle fw-semibold"
+                                style={{ width: 'auto', minHeight: '36px' }}
+                            >
+                                <option value={10}>10</option>
+                                <option value={15}>15</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                            </select>
+                            <span className="small text-muted">por página</span>
                         </div>
                     </div>
 
@@ -350,7 +382,7 @@ export default function GestionFacturas() {
                                             Cargando facturas desde el servidor...
                                         </td>
                                     </tr>
-                                ) : facturasFiltradas.length === 0 ? (
+                                ) : facturasPaginadas.length === 0 ? (
                                     <tr>
                                         <td colSpan="8" className="text-center py-4 text-muted">
                                             {errorCarga
@@ -359,7 +391,7 @@ export default function GestionFacturas() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    facturasFiltradas.map((fac) => (
+                                    facturasPaginadas.map((fac) => (
                                         <tr key={fac.id_factura}>
                                             <td className="px-4">
                                                 <div className="fw-semibold text-dark">{fac.numero}</div>
@@ -387,6 +419,37 @@ export default function GestionFacturas() {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Controles de paginación */}
+                    {!cargando && facturasFiltradas.length > 0 && (
+                        <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3 mt-4 pt-3 border-top">
+                            <span className="small text-muted">
+                                Mostrando <strong>{indiceInicio + 1}–{indiceFin}</strong> de{' '}
+                                <strong>{facturasFiltradas.length}</strong> facturas
+                            </span>
+                            <div className="d-flex align-items-center gap-2">
+                                <button
+                                    type="button"
+                                    disabled={paginaSegura <= 1}
+                                    onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                                    className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                >
+                                    <i className="bi bi-chevron-left me-1"></i> Anterior
+                                </button>
+                                <span className="small fw-semibold px-2" style={{ color: '#2b3d52' }}>
+                                    Página {paginaSegura} de {totalPaginas}
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={paginaSegura >= totalPaginas}
+                                    onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
+                                    className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                >
+                                    Siguiente <i className="bi bi-chevron-right ms-1"></i>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
