@@ -144,105 +144,6 @@ def registrar_avance_obra(request: Any) -> JsonResponse:
     )
 
 
-@csrf_exempt
-@require_rbac("obras_mantencion", "R")
-def api_obras(request: Any) -> JsonResponse:
-    """GET/POST /api/v1/obras/ -> lista o registra obras en tabla 'obra'."""
-    if request.method == "GET":
-        obras: list[dict[str, Any]] = []
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT id_obra, codigo, descripcion, tipo_obra,
-                           porcentaje_avance, estado, observacion
-                    FROM obra
-                    ORDER BY id_obra DESC;
-                    """
-                )
-                for row in cursor.fetchall():
-                    obras.append(
-                        {
-                            "id": row[0],
-                            "id_obra": row[0],
-                            "codigo": row[1],
-                            "codigo_obra": row[1],
-                            "nombre": row[2] or row[1],
-                            "descripcion": row[2],
-                            "tipo": row[3],
-                            "porcentaje_avance": row[4],
-                            "estado": row[5],
-                            "observacion": row[6],
-                        }
-                    )
-        except Exception:
-            obras = []
-
-        return JsonResponse({"obras": obras, "total": len(obras)}, status=200)
-
-    if request.method == "POST":
-        return registrar_avance_obra(request)
-
-    return JsonResponse({"error": "Método no permitido."}, status=405)
-
-
-@csrf_exempt
-@require_rbac("inventario_bodega", "R")
-def api_despachos(request: Any) -> JsonResponse:
-    """GET/POST /api/v1/despachos/ -> lista o registra despachos de bodega."""
-    if request.method == "GET":
-        despachos: list[dict[str, Any]] = []
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT id_despacho, numero_despacho, id_obra, estado,
-                           observacion, fecha_despacho
-                    FROM despacho
-                    ORDER BY id_despacho DESC;
-                    """
-                )
-                for row in cursor.fetchall():
-                    despachos.append(
-                        {
-                            "id": row[0],
-                            "id_despacho": row[0],
-                            "numero_despacho": row[1],
-                            "id_obra": row[2],
-                            "estado": row[3],
-                            "observacion": row[4],
-                            "fecha": str(row[5]) if row[5] else None,
-                        }
-                    )
-        except Exception:
-            despachos = []
-
-        return JsonResponse(
-            {"despachos": despachos, "total": len(despachos)}, status=200
-        )
-
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body.decode("utf-8") or "{}")
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "JSON inválido."}, status=400)
-
-        observacion = sanitize_text_input(str(data.get("observacion", "")).strip())
-        return JsonResponse(
-            {
-                "mensaje": "Despacho registrado correctamente.",
-                "despacho": {
-                    "estado": "DESPACHADO",
-                    "observacion": observacion,
-                    **data,
-                },
-            },
-            status=201,
-        )
-
-    return JsonResponse({"error": "Método no permitido."}, status=405)
-
-
 @require_rbac("inventario_bodega", "R")
 def api_listar_inventario(request: Any) -> JsonResponse:
     """GET /api/v1/inventario/items/ -> lista insumos en bodega."""
@@ -284,15 +185,35 @@ def api_crear_inventario(request: Any) -> JsonResponse:
             {"error": "Datos de inventario inválidos."}, status=400
         )
 
+    jwt_payload = getattr(request, "jwt_payload", {}) or {}
+    usuario_ref = sanitize_text_input(
+        str(
+            data.get("usuario")
+            or jwt_payload.get("usuario")
+            or jwt_payload.get("sub")
+            or jwt_payload.get("email")
+            or ""
+        ).strip()
+    )
+
     creado = crear_item_inventario(
         sku=sku,
         nombre=nombre,
         stock=stock,
         ubicacion=ubicacion,
+        ubicacion_id=data.get("id_ubicacion", data.get("ubicacion_id")),
+        categoria_id=data.get("id_categoria", data.get("categoria_id")),
+        categoria=data.get("categoria"),
         unidad=unidad,
         precio=precio,
         stock_critico=stock_critico,
+        usuario_ref=usuario_ref or None,
     )
+    if isinstance(creado, dict) and creado.get("error"):
+        return JsonResponse(
+            {"error": creado["error"]},
+            status=int(creado.get("status", 400)),
+        )
     return JsonResponse({"item": creado}, status=201)
 
 
@@ -307,70 +228,665 @@ def api_buscar_inventario(request: Any) -> JsonResponse:
     return JsonResponse({"resultados": resultados, "total": len(resultados)}, status=200)
 
 
-@require_rbac("inventario_bodega", "R")
+@csrf_exempt
 def api_categorias(request: Any) -> JsonResponse:
-    """GET /api/v1/categorias/ -> lista categorías activas."""
-    if request.method != "GET":
-        return JsonResponse({"error": "Método no permitido."}, status=405)
+    """GET/POST /api/v1/categorias/ -> lista o crea categorías activas."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
 
-    categorias: list[dict[str, Any]] = []
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id_categoria, nombre, activo
-                FROM categoria
-                WHERE activo = TRUE
-                ORDER BY nombre ASC;
-                """
+    if request.method == "GET":
+        if "R" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (R)."},
+                status=403,
             )
-            for row in cursor.fetchall():
-                categorias.append(
-                    {
-                        "id": row[0],
-                        "id_categoria": row[0],
-                        "nombre": row[1],
-                        "activo": row[2],
-                    }
-                )
-    except Exception:
-        categorias = []
 
-    return JsonResponse({"categorias": categorias, "total": len(categorias)}, status=200)
+        categorias: list[dict[str, Any]] = []
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id_categoria, nombre, activo
+                    FROM categoria
+                    WHERE activo = TRUE
+                    ORDER BY nombre ASC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    categorias.append(
+                        {
+                            "id": row[0],
+                            "id_categoria": row[0],
+                            "nombre": row[1],
+                            "activo": row[2],
+                        }
+                    )
+        except Exception:
+            categorias = []
+
+        return JsonResponse({"categorias": categorias, "total": len(categorias)}, status=200)
+
+    if request.method == "POST":
+        if "C" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        nombre = sanitize_text_input(
+            str(data.get("nombre", data.get("categoria", data.get("name", "")))).strip()
+        )
+        if not nombre:
+            return JsonResponse({"error": "El nombre de la categoría es obligatorio."}, status=400)
+
+        id_categoria_bd = None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO categoria (nombre, activo)
+                    VALUES (%s, TRUE)
+                    ON CONFLICT (nombre) DO UPDATE SET activo = TRUE
+                    RETURNING id_categoria;
+                    """,
+                    [nombre[:100]],
+                )
+                id_categoria_bd = int(cursor.fetchone()[0])
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al guardar categoría en BD: {exc}"}, status=500
+            )
+
+        nueva_categoria = {
+            "id": id_categoria_bd,
+            "id_categoria": id_categoria_bd,
+            "nombre": nombre,
+            "activo": True,
+        }
+        return JsonResponse(
+            {"categoria": nueva_categoria, "mensaje": "Categoría creada correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
+
+@csrf_exempt
+def api_ubicaciones(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/ubicaciones/ -> lista o crea ubicaciones activas."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    if request.method == "GET":
+        if "R" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (R)."},
+                status=403,
+            )
+
+        ubicaciones: list[dict[str, Any]] = []
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id_ubicacion, bodega, detalle, activo
+                    FROM ubicacion
+                    WHERE activo = TRUE
+                    ORDER BY bodega ASC, detalle ASC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    ubicaciones.append(
+                        {
+                            "id": row[0],
+                            "id_ubicacion": row[0],
+                            "bodega": row[1],
+                            "detalle": row[2],
+                            "nombre": f"{row[1]} - {row[2]}" if row[2] else row[1],
+                            "activo": row[3],
+                        }
+                    )
+        except Exception:
+            ubicaciones = []
+
+        return JsonResponse({"ubicaciones": ubicaciones, "total": len(ubicaciones)}, status=200)
+
+    if request.method == "POST":
+        if "C" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        bodega = sanitize_text_input(
+            str(data.get("bodega", data.get("nombre", ""))).strip()
+        )
+        detalle = sanitize_text_input(
+            str(data.get("detalle", data.get("descripcion", ""))).strip()
+        )
+
+        if not bodega and not detalle:
+            return JsonResponse(
+                {"error": "Debes indicar bodega o detalle para la ubicación."}, status=400
+            )
+        if not bodega:
+            bodega = "Bodega Principal"
+
+        id_ubicacion_bd = None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO ubicacion (bodega, detalle, activo)
+                    VALUES (%s, %s, TRUE)
+                    RETURNING id_ubicacion;
+                    """,
+                    [bodega[:100], detalle[:150]],
+                )
+                id_ubicacion_bd = int(cursor.fetchone()[0])
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al guardar ubicación en BD: {exc}"}, status=500
+            )
+
+        nueva_ubicacion = {
+            "id": id_ubicacion_bd,
+            "id_ubicacion": id_ubicacion_bd,
+            "bodega": bodega,
+            "detalle": detalle,
+            "nombre": f"{bodega} - {detalle}" if detalle else bodega,
+            "activo": True,
+        }
+        return JsonResponse(
+            {"ubicacion": nueva_ubicacion, "mensaje": "Ubicación creada correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
 @require_rbac("inventario_bodega", "R")
-def api_ubicaciones(request: Any) -> JsonResponse:
-    """GET /api/v1/ubicaciones/ -> lista ubicaciones activas."""
+def api_mermas(request: Any) -> JsonResponse:
+    """GET /api/v1/mermas/ -> lista registros de mermas en bodega."""
     if request.method != "GET":
         return JsonResponse({"error": "Método no permitido."}, status=405)
 
-    ubicaciones: list[dict[str, Any]] = []
+    mermas: list[dict[str, Any]] = []
     try:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id_ubicacion, bodega, detalle, activo
-                FROM ubicacion
-                WHERE activo = TRUE
-                ORDER BY bodega ASC, detalle ASC;
+                SELECT
+                    m.id_merma,
+                    m.fecha,
+                    COALESCE(a.nombre, CONCAT('Artículo #', m.id_articulo::text)) AS articulo,
+                    COALESCE(
+                        NULLIF(TRIM(CONCAT(COALESCE(u.nombres, ''), ' ', COALESCE(u.apellidos, ''))), ''),
+                        u.usuario,
+                        'Sistema'
+                    ) AS responsable,
+                    m.cantidad,
+                    m.motivo,
+                    m.justificacion
+                FROM merma m
+                LEFT JOIN articulo a ON a.id_articulo = m.id_articulo
+                LEFT JOIN usuario u ON u.id_usuario = m.id_usuario
+                ORDER BY m.fecha DESC, m.id_merma DESC;
                 """
             )
             for row in cursor.fetchall():
-                ubicaciones.append(
+                fecha_str = (
+                    row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1] or "")
+                )
+                mermas.append(
                     {
                         "id": row[0],
-                        "id_ubicacion": row[0],
-                        "bodega": row[1],
-                        "detalle": row[2],
-                        "nombre": f"{row[1]} - {row[2]}" if row[2] else row[1],
-                        "activo": row[3],
+                        "id_merma": row[0],
+                        "fecha": fecha_str,
+                        "fecha_hora": fecha_str,
+                        "articulo": row[2],
+                        "responsable": row[3],
+                        "cantidad": row[4],
+                        "motivo": row[5],
+                        "justificacion": row[6],
                     }
                 )
     except Exception:
-        ubicaciones = []
+        mermas = []
 
-    return JsonResponse({"ubicaciones": ubicaciones, "total": len(ubicaciones)}, status=200)
+    return JsonResponse({"mermas": mermas, "total": len(mermas)}, status=200)
+
+
+@csrf_exempt
+def api_proveedores(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/proveedores/ -> lista o registra proveedores."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    if request.method == "GET":
+        if "R" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (R)."},
+                status=403,
+            )
+
+        q = sanitize_text_input(str(request.GET.get("q", "")).strip()).lower()
+        proveedores: list[dict[str, Any]] = []
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        id_proveedor,
+                        razon_social,
+                        rut,
+                        correo_electronico,
+                        telefono,
+                        direccion,
+                        activo
+                    FROM proveedor
+                    ORDER BY id_proveedor ASC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    activo_bool = bool(row[6]) if row[6] is not None else True
+                    item = {
+                        "id": row[0],
+                        "id_proveedor": row[0],
+                        "razon_social": row[1] or "",
+                        "rut": row[2] or "",
+                        "correo_electronico": row[3] or "",
+                        "correo": row[3] or "",
+                        "email": row[3] or "",
+                        "telefono": row[4] or "",
+                        "direccion": row[5] or "",
+                        "activo": activo_bool,
+                        "estado": "Activo" if activo_bool else "Inactivo",
+                    }
+                    if not q or any(
+                        q in str(item[campo]).lower()
+                        for campo in (
+                            "razon_social",
+                            "rut",
+                            "correo_electronico",
+                            "telefono",
+                            "direccion",
+                        )
+                    ):
+                        proveedores.append(item)
+        except Exception:
+            proveedores = []
+
+        return JsonResponse(
+            {"proveedores": proveedores, "total": len(proveedores)}, status=200
+        )
+
+    if request.method == "POST":
+        if "C" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        razon_social = sanitize_text_input(str(data.get("razon_social", "")).strip())
+        rut = sanitize_text_input(str(data.get("rut", "")).strip())
+        correo = sanitize_text_input(
+            str(
+                data.get("correo_electronico", data.get("correo", data.get("email", "")))
+            ).strip()
+        )
+        telefono = sanitize_text_input(str(data.get("telefono", "")).strip())
+        direccion = sanitize_text_input(str(data.get("direccion", "")).strip())
+
+        if not razon_social or not rut:
+            return JsonResponse(
+                {"error": "Razón social y RUT son obligatorios."}, status=400
+            )
+
+        id_proveedor_bd = None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO proveedor (
+                        razon_social, rut, correo_electronico, telefono, direccion, activo
+                    )
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                    RETURNING id_proveedor;
+                    """,
+                    [
+                        razon_social[:150],
+                        rut[:20],
+                        correo[:120],
+                        telefono[:30],
+                        direccion[:200],
+                    ],
+                )
+                id_proveedor_bd = int(cursor.fetchone()[0])
+        except Exception:
+            id_proveedor_bd = None
+
+        nuevo_proveedor = {
+            "id": id_proveedor_bd,
+            "id_proveedor": id_proveedor_bd,
+            "razon_social": razon_social,
+            "rut": rut,
+            "correo_electronico": correo,
+            "correo": correo,
+            "telefono": telefono,
+            "direccion": direccion,
+            "activo": True,
+            "estado": "Activo",
+        }
+        return JsonResponse(
+            {"proveedor": nuevo_proveedor, "mensaje": "Proveedor registrado correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
+
+@csrf_exempt
+def api_clientes(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/clientes/ -> lista o registra clientes."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    if request.method == "GET":
+        modulo_ok = (
+            "R" in RBAC_MATRIX.get(role, {}).get("obras_mantencion", set())
+            or "R" in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set())
+        )
+        if not modulo_ok:
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en clientes (R)."},
+                status=403,
+            )
+
+        q = sanitize_text_input(str(request.GET.get("q", "")).strip()).lower()
+        clientes: list[dict[str, Any]] = []
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        id_cliente,
+                        nombres,
+                        apellidos,
+                        rut,
+                        correo_electronico,
+                        telefono,
+                        direccion,
+                        activo
+                    FROM cliente
+                    ORDER BY id_cliente ASC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    nombres_val = row[1] or ""
+                    apellidos_val = row[2] or ""
+                    nombre_completo = f"{nombres_val} {apellidos_val}".strip()
+                    activo_bool = bool(row[7]) if row[7] is not None else True
+                    item = {
+                        "id": row[0],
+                        "id_cliente": row[0],
+                        "nombres": nombres_val,
+                        "apellidos": apellidos_val,
+                        "nombre_razon_social": nombre_completo,
+                        "razon_social": nombre_completo,
+                        "nombre": nombre_completo,
+                        "rut": row[3] or "",
+                        "correo_electronico": row[4] or "",
+                        "correo": row[4] or "",
+                        "email": row[4] or "",
+                        "telefono": row[5] or "",
+                        "direccion": row[6] or "",
+                        "activo": activo_bool,
+                        "estado": "Activo" if activo_bool else "Inactivo",
+                    }
+                    if not q or any(
+                        q in str(item[campo]).lower()
+                        for campo in (
+                            "nombres",
+                            "apellidos",
+                            "nombre_razon_social",
+                            "rut",
+                            "correo_electronico",
+                            "telefono",
+                            "direccion",
+                        )
+                    ):
+                        clientes.append(item)
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al consultar clientes en BD: {exc}"}, status=500
+            )
+
+        return JsonResponse(
+            {"clientes": clientes, "total": len(clientes)}, status=200
+        )
+
+    if request.method == "POST":
+        modulo_ok = (
+            "C" in RBAC_MATRIX.get(role, {}).get("obras_mantencion", set())
+            or "C" in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set())
+        )
+        if not modulo_ok:
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en clientes (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        nombres_raw = sanitize_text_input(
+            str(
+                data.get(
+                    "nombres",
+                    data.get(
+                        "nombre_razon_social",
+                        data.get("razon_social", data.get("nombre", "")),
+                    ),
+                )
+            ).strip()
+        )
+        apellidos_raw = sanitize_text_input(str(data.get("apellidos", "")).strip())
+
+        if not apellidos_raw and " " in nombres_raw:
+            partes = nombres_raw.split(" ", 1)
+            nombres = partes[0].strip()
+            apellidos = partes[1].strip()
+        else:
+            nombres = nombres_raw
+            apellidos = apellidos_raw or "-"
+
+        rut = sanitize_text_input(str(data.get("rut", "")).strip())
+        correo = sanitize_text_input(
+            str(
+                data.get("correo_electronico", data.get("correo", data.get("email", "")))
+            ).strip()
+        )
+        telefono = sanitize_text_input(str(data.get("telefono", "")).strip())
+        direccion = sanitize_text_input(str(data.get("direccion", "")).strip())
+
+        if not nombres or not rut:
+            return JsonResponse(
+                {"error": "Nombre/Razón social y RUT son obligatorios."}, status=400
+            )
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO cliente (
+                        nombres, apellidos, rut, correo_electronico, telefono, direccion, activo
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                    RETURNING id_cliente;
+                    """,
+                    [
+                        nombres[:100],
+                        apellidos[:100],
+                        rut[:20],
+                        correo[:120],
+                        telefono[:30],
+                        direccion[:200],
+                    ],
+                )
+                id_cliente_bd = int(cursor.fetchone()[0])
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al guardar cliente en BD: {exc}"}, status=500
+            )
+
+        nombre_completo = f"{nombres} {apellidos}".strip()
+        nuevo_cliente = {
+            "id": id_cliente_bd,
+            "id_cliente": id_cliente_bd,
+            "nombres": nombres,
+            "apellidos": apellidos,
+            "nombre_razon_social": nombre_completo,
+            "razon_social": nombre_completo,
+            "nombre": nombre_completo,
+            "rut": rut,
+            "correo_electronico": correo,
+            "correo": correo,
+            "telefono": telefono,
+            "direccion": direccion,
+            "activo": True,
+            "estado": "Activo",
+        }
+        return JsonResponse(
+            {"cliente": nuevo_cliente, "mensaje": "Cliente registrado correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
+
+@csrf_exempt
+def api_autorizaciones(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/autorizaciones/ -> consulta o gestiona autorizaciones."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    if request.method == "GET":
+        modulo_ok = (
+            "R" in RBAC_MATRIX.get(role, {}).get("usuarios_roles", set())
+            or "R" in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set())
+            or "R" in RBAC_MATRIX.get(role, {}).get("obras_mantencion", set())
+        )
+        if not modulo_ok:
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en autorizaciones (R)."},
+                status=403,
+            )
+
+        q = sanitize_text_input(str(request.GET.get("q", "")).strip()).lower()
+        estado_filtro = sanitize_text_input(str(request.GET.get("estado", "")).strip()).lower()
+        autorizaciones: list[dict[str, Any]] = []
+
+        for tabla in ("autorizacion", "solicitud_autorizacion"):
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(f"SELECT * FROM {tabla} LIMIT 1;")
+                    cols = [col[0] for col in cursor.description] if cursor.description else []
+                    cursor.execute(f"SELECT * FROM {tabla} ORDER BY 1 DESC;")
+                    for row in cursor.fetchall():
+                        rec = dict(zip(cols, row))
+                        id_val = rec.get("id_autorizacion") or rec.get("id")
+                        solicitante = (
+                            rec.get("solicitante")
+                            or rec.get("usuario")
+                            or rec.get("id_usuario")
+                            or "Sistema"
+                        )
+                        modulo_reg = (
+                            rec.get("modulo")
+                            or rec.get("registro")
+                            or rec.get("tabla")
+                            or "General"
+                        )
+                        accion = rec.get("accion") or rec.get("tipo_accion") or "MODIFICACION"
+                        motivo = rec.get("motivo") or rec.get("observacion") or ""
+                        fecha_raw = rec.get("fecha_solicitud") or rec.get("fecha") or ""
+                        fecha_str = (
+                            fecha_raw.isoformat()
+                            if hasattr(fecha_raw, "isoformat")
+                            else str(fecha_raw or "")
+                        )
+                        estado_val = rec.get("estado") or "PENDIENTE"
+                        item = {
+                            "id": id_val,
+                            "id_autorizacion": id_val,
+                            "solicitante": str(solicitante),
+                            "modulo": str(modulo_reg),
+                            "registro": str(modulo_reg),
+                            "accion": str(accion),
+                            "motivo": str(motivo),
+                            "fecha_solicitud": fecha_str,
+                            "fecha": fecha_str,
+                            "estado": str(estado_val),
+                        }
+                        if estado_filtro and estado_filtro not in ("todos", "todos los estados"):
+                            if estado_filtro not in item["estado"].lower():
+                                continue
+                        if not q or any(
+                            q in str(item[campo]).lower()
+                            for campo in ("id", "solicitante", "modulo", "accion", "motivo", "estado")
+                        ):
+                            autorizaciones.append(item)
+                break
+            except Exception:
+                continue
+
+        return JsonResponse(
+            {"autorizaciones": autorizaciones, "total": len(autorizaciones)}, status=200
+        )
+
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        estado_nuevo = sanitize_text_input(
+            str(data.get("estado", data.get("accion", "APROBADA"))).strip()
+        ).upper()
+        return JsonResponse(
+            {
+                "mensaje": "Autorización actualizada correctamente.",
+                "estado": estado_nuevo,
+            },
+            status=200,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
 @csrf_exempt
