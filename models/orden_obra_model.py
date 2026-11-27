@@ -3,6 +3,7 @@
 import os
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
 from django.db import connection, models, transaction
@@ -73,28 +74,79 @@ def _normalizar_tipo_cardex(tipo: str) -> str:
     return mapa.get(tipo.strip().upper(), tipo.strip().lower())
 
 
-def _resolver_ids_base() -> tuple[int, int]:
-    """Obtiene un id_categoria y un id_ubicacion válidos desde la BD (o 1 por defecto)."""
-    cat_id = 1
-    ubi_id = 1
+def _resolver_ids_base(
+    categoria_ref: Optional[Any] = None,
+    ubicacion_ref: Optional[Any] = None,
+) -> tuple[int, int]:
+    """Resuelve id_categoria e id_ubicacion válidos desde la BD según ID, nombre o primer registro."""
+    cat_id: Optional[int] = None
+    ubi_id: Optional[int] = None
+
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT id_categoria FROM categoria WHERE activo = TRUE ORDER BY id_categoria LIMIT 1;"
-            )
-            row_cat = cursor.fetchone()
-            if row_cat and row_cat[0] is not None:
-                cat_id = int(row_cat[0])
+            if categoria_ref is not None and str(categoria_ref).strip() != "":
+                cat_str = str(categoria_ref).strip()
+                if cat_str.isdigit():
+                    cursor.execute(
+                        "SELECT id_categoria FROM categoria WHERE id_categoria = %s LIMIT 1;",
+                        [int(cat_str)],
+                    )
+                    r = cursor.fetchone()
+                    if r and r[0] is not None:
+                        cat_id = int(r[0])
+                if cat_id is None:
+                    cursor.execute(
+                        "SELECT id_categoria FROM categoria WHERE LOWER(nombre) = LOWER(%s) LIMIT 1;",
+                        [cat_str],
+                    )
+                    r = cursor.fetchone()
+                    if r and r[0] is not None:
+                        cat_id = int(r[0])
 
-            cursor.execute(
-                "SELECT id_ubicacion FROM ubicacion WHERE activo = TRUE ORDER BY id_ubicacion LIMIT 1;"
-            )
-            row_ubi = cursor.fetchone()
-            if row_ubi and row_ubi[0] is not None:
-                ubi_id = int(row_ubi[0])
+            if cat_id is None:
+                cursor.execute(
+                    "SELECT id_categoria FROM categoria ORDER BY activo DESC, id_categoria ASC LIMIT 1;"
+                )
+                r = cursor.fetchone()
+                if r and r[0] is not None:
+                    cat_id = int(r[0])
+
+            if ubicacion_ref is not None and str(ubicacion_ref).strip() != "":
+                ubi_str = str(ubicacion_ref).strip()
+                if ubi_str.isdigit():
+                    cursor.execute(
+                        "SELECT id_ubicacion FROM ubicacion WHERE id_ubicacion = %s LIMIT 1;",
+                        [int(ubi_str)],
+                    )
+                    r = cursor.fetchone()
+                    if r and r[0] is not None:
+                        ubi_id = int(r[0])
+                if ubi_id is None:
+                    cursor.execute(
+                        """
+                        SELECT id_ubicacion FROM ubicacion
+                        WHERE LOWER(bodega) = LOWER(%s)
+                           OR LOWER(detalle) = LOWER(%s)
+                           OR LOWER(CONCAT(bodega, ' - ', COALESCE(detalle, ''))) = LOWER(%s)
+                        LIMIT 1;
+                        """,
+                        [ubi_str, ubi_str, ubi_str],
+                    )
+                    r = cursor.fetchone()
+                    if r and r[0] is not None:
+                        ubi_id = int(r[0])
+
+            if ubi_id is None:
+                cursor.execute(
+                    "SELECT id_ubicacion FROM ubicacion ORDER BY activo DESC, id_ubicacion ASC LIMIT 1;"
+                )
+                r = cursor.fetchone()
+                if r and r[0] is not None:
+                    ubi_id = int(r[0])
     except Exception:
         pass
-    return cat_id, ubi_id
+
+    return cat_id or 1, ubi_id or 1
 
 
 def _resolver_ids_obra() -> tuple[int, int]:
@@ -104,14 +156,14 @@ def _resolver_ids_obra() -> tuple[int, int]:
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT id_usuario FROM usuario WHERE activo = TRUE ORDER BY id_usuario LIMIT 1;"
+                "SELECT id_usuario FROM usuario ORDER BY activo DESC, id_usuario ASC LIMIT 1;"
             )
             row_usr = cursor.fetchone()
             if row_usr and row_usr[0] is not None:
                 usr_id = int(row_usr[0])
 
             cursor.execute(
-                "SELECT id_cliente FROM cliente WHERE activo = TRUE ORDER BY id_cliente LIMIT 1;"
+                "SELECT id_cliente FROM cliente ORDER BY activo DESC, id_cliente ASC LIMIT 1;"
             )
             row_cli = cursor.fetchone()
             if row_cli and row_cli[0] is not None:
@@ -131,8 +183,7 @@ def _resolver_id_usuario(usuario_ref: Optional[str] = None) -> int:
             cursor.execute(
                 """
                 SELECT id_usuario FROM usuario
-                WHERE activo = TRUE
-                  AND (LOWER(usuario) = LOWER(%s) OR LOWER(correo_electronico) = LOWER(%s))
+                WHERE LOWER(usuario) = LOWER(%s) OR LOWER(correo_electronico) = LOWER(%s)
                 LIMIT 1;
                 """,
                 [usuario_ref, usuario_ref],
@@ -234,51 +285,79 @@ def crear_item_inventario(
     ubicacion: str = "Bodega Central",
     ubicacion_id: Optional[int] = None,
     categoria_id: Optional[int] = None,
+    categoria: Optional[str] = None,
     unidad: str = "unidad",
     precio: float = 0.0,
     stock_critico: int = 5,
 ) -> Dict[str, Any]:
     """Crea o actualiza un artículo directamente en la tabla 'articulo'."""
-    cat_default, ubi_default = _resolver_ids_base()
-    cat_final = categoria_id if categoria_id is not None else cat_default
-    ubi_final = ubicacion_id if ubicacion_id is not None else ubi_default
+    cat_ref = categoria_id if categoria_id is not None else categoria
+    ubi_ref = ubicacion_id if ubicacion_id is not None else ubicacion
+    cat_final, ubi_final = _resolver_ids_base(cat_ref, ubi_ref)
+
     estado_art = "sin stock" if stock <= 0 else "en bodega"
-    codigo_sku = sku[:20] if sku else None
+    codigo_sku = str(sku).strip()[:20] if sku and str(sku).strip() else None
+    nombre_limpio = str(nombre).strip()[:200]
+    unidad_limpia = str(unidad).strip()[:25] if unidad and str(unidad).strip() else "unidad"
 
-    existente = None
-    if codigo_sku:
-        existente = Articulo.objects.filter(
-            codigo_de_barras=codigo_sku, activo=True
-        ).first()
-    if not existente:
-        existente = Articulo.objects.filter(nombre=nombre, activo=True).first()
+    try:
+        precio_dec = Decimal(str(precio)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError):
+        precio_dec = Decimal("0.00")
 
-    if existente:
-        existente.nombre = nombre[:200]
-        existente.stock_actual = stock
-        existente.stock_critico = stock_critico
-        existente.id_categoria = cat_final
-        existente.id_ubicacion = ubi_final
-        existente.precio = precio
-        existente.estado = estado_art
+    ahora = datetime.now(timezone.utc)
+
+    with transaction.atomic():
+        existente = None
         if codigo_sku:
-            existente.codigo_de_barras = codigo_sku
-        existente.save()
-        obj = existente
-    else:
-        obj = Articulo.objects.create(
-            id_categoria=cat_final,
-            id_ubicacion=ubi_final,
-            codigo_de_barras=codigo_sku,
-            nombre=nombre[:200],
-            stock_actual=stock,
-            stock_critico=stock_critico,
-            unidad_de_medida=unidad[:25],
-            precio=precio,
-            fecha_ingreso=datetime.now(timezone.utc),
-            estado=estado_art,
-            activo=True,
-        )
+            existente = Articulo.objects.filter(
+                codigo_de_barras=codigo_sku, activo=True
+            ).first()
+        if not existente:
+            existente = Articulo.objects.filter(
+                nombre__iexact=nombre_limpio, activo=True
+            ).first()
+
+        if existente:
+            existente.nombre = nombre_limpio
+            existente.stock_actual = int(stock)
+            existente.stock_critico = int(stock_critico)
+            existente.unidad_de_medida = unidad_limpia
+            existente.id_categoria = int(cat_final)
+            existente.id_ubicacion = int(ubi_final)
+            existente.precio = precio_dec
+            existente.estado = estado_art
+            if codigo_sku:
+                existente.codigo_de_barras = codigo_sku
+            existente.save()
+            obj = existente
+        else:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO articulo (
+                        id_categoria, id_ubicacion, codigo_de_barras, nombre,
+                        stock_actual, stock_critico, unidad_de_medida, precio,
+                        fecha_ingreso, estado, activo
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+                    RETURNING id_articulo;
+                    """,
+                    [
+                        int(cat_final),
+                        int(ubi_final),
+                        codigo_sku,
+                        nombre_limpio,
+                        int(stock),
+                        int(stock_critico),
+                        unidad_limpia,
+                        precio_dec,
+                        ahora,
+                        estado_art,
+                    ],
+                )
+                nuevo_id = int(cursor.fetchone()[0])
+            obj = Articulo.objects.get(pk=nuevo_id)
 
     return {
         "id": obj.id_articulo,
@@ -291,6 +370,7 @@ def crear_item_inventario(
         "stock": obj.stock_actual,
         "stock_actual": obj.stock_actual,
         "stock_critico": obj.stock_critico,
+        "unidad_de_medida": obj.unidad_de_medida,
         "ubicacion": ubicacion or f"Ubicación #{obj.id_ubicacion}",
         "ubicacion_id": obj.id_ubicacion,
         "precio": float(obj.precio),
