@@ -1807,3 +1807,4 @@ def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
             status=500,
         )
 
+
