@@ -872,6 +872,221 @@ def api_clientes(request: Any) -> JsonResponse:
 
 
 @csrf_exempt
+def api_facturas(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/facturas/ -> lista o registra facturas de compra."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    if request.method == "GET":
+        if "R" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (R)."},
+                status=403,
+            )
+
+        q = sanitize_text_input(str(request.GET.get("q", "")).strip()).lower()
+        facturas: list[dict[str, Any]] = []
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        f.id_factura,
+                        f.numero,
+                        f.id_proveedor,
+                        p.razon_social,
+                        f.id_ubicacion,
+                        u.bodega,
+                        u.detalle,
+                        f.fecha_compra,
+                        f.comprobante,
+                        f.monto_neto,
+                        f.iva,
+                        f.monto_bruto,
+                        f.id_usuario
+                    FROM factura f
+                    LEFT JOIN proveedor p ON p.id_proveedor = f.id_proveedor
+                    LEFT JOIN ubicacion u ON u.id_ubicacion = f.id_ubicacion
+                    ORDER BY f.id_factura DESC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    ubicacion_txt = (
+                        f"{row[5]} - {row[6]}" if row[5] and row[6] else (row[5] or "")
+                    )
+                    item = {
+                        "id": row[0],
+                        "id_factura": row[0],
+                        "numero": row[1] or "",
+                        "numero_factura": row[1] or "",
+                        "id_proveedor": row[2],
+                        "proveedor": row[3] or "",
+                        "id_ubicacion": row[4],
+                        "ubicacion": ubicacion_txt,
+                        "fecha_compra": str(row[7]) if row[7] is not None else "",
+                        "comprobante": row[8] or "",
+                        "monto_neto": float(row[9] or 0),
+                        "iva": float(row[10] or 0),
+                        "monto_bruto": float(row[11] or 0),
+                        "id_usuario": row[12],
+                    }
+                    if not q or any(
+                        q in str(item[campo]).lower()
+                        for campo in (
+                            "id_factura",
+                            "numero",
+                            "proveedor",
+                            "ubicacion",
+                            "fecha_compra",
+                        )
+                    ):
+                        facturas.append(item)
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al consultar facturas en BD: {exc}"}, status=500
+            )
+
+        return JsonResponse({"facturas": facturas, "total": len(facturas)}, status=200)
+
+    if request.method == "POST":
+        if "C" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        numero = sanitize_text_input(
+            str(data.get("numero", data.get("numero_factura", data.get("nro_factura", "")))).strip()
+        )
+        fecha_compra = sanitize_text_input(
+            str(data.get("fecha_compra", data.get("fecha", ""))).strip()
+        )
+        comprobante = sanitize_text_input(
+            str(data.get("comprobante", "")).strip()
+        )
+
+        try:
+            id_proveedor = int(data.get("id_proveedor") or data.get("proveedor_id"))
+            id_ubicacion = int(data.get("id_ubicacion") or data.get("ubicacion_id"))
+            monto_neto = float(data.get("monto_neto", 0))
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {"error": "id_proveedor, id_ubicacion y monto_neto deben ser válidos."},
+                status=400,
+            )
+
+        if not numero:
+            return JsonResponse(
+                {"error": "El número de factura es obligatorio."}, status=400
+            )
+
+        iva_raw = data.get("iva")
+        bruto_raw = data.get("monto_bruto")
+        iva = float(iva_raw) if iva_raw is not None else round(monto_neto * 0.19, 2)
+        monto_bruto = float(bruto_raw) if bruto_raw is not None else round(monto_neto + iva, 2)
+
+        jwt_payload = getattr(request, "jwt_payload", {}) or {}
+        id_usuario = None
+        for clave_u in ("id_usuario", "user_id", "sub"):
+            val_u = data.get(clave_u) if data.get(clave_u) is not None else jwt_payload.get(clave_u)
+            if val_u is not None:
+                try:
+                    id_usuario = int(val_u)
+                    break
+                except (TypeError, ValueError):
+                    pass
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO factura (
+                        id_proveedor,
+                        id_usuario,
+                        id_ubicacion,
+                        numero,
+                        fecha_compra,
+                        comprobante,
+                        monto_neto,
+                        iva,
+                        monto_bruto
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id_factura;
+                    """,
+                    [
+                        id_proveedor,
+                        id_usuario,
+                        id_ubicacion,
+                        numero[:30],
+                        fecha_compra or None,
+                        comprobante[:255] or None,
+                        monto_neto,
+                        iva,
+                        monto_bruto,
+                    ],
+                )
+                id_factura_bd = int(cursor.fetchone()[0])
+
+                detalles = data.get("detalles") or data.get("items") or []
+                if isinstance(detalles, list):
+                    for det in detalles:
+                        if not isinstance(det, dict):
+                            continue
+                        try:
+                            id_art = int(det.get("id_articulo") or det.get("articulo_id"))
+                            cant = int(det.get("cantidad", 0))
+                            p_unit = float(det.get("precio_unitario", det.get("precio", 0)))
+                        except (TypeError, ValueError):
+                            continue
+                        if cant > 0:
+                            cursor.execute(
+                                """
+                                INSERT INTO detalle_factura (
+                                    id_factura,
+                                    id_articulo,
+                                    cantidad,
+                                    precio_unitario
+                                )
+                                VALUES (%s, %s, %s, %s);
+                                """,
+                                [id_factura_bd, id_art, cant, p_unit],
+                            )
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al guardar factura en BD: {exc}"}, status=500
+            )
+
+        nueva_factura = {
+            "id": id_factura_bd,
+            "id_factura": id_factura_bd,
+            "numero": numero,
+            "numero_factura": numero,
+            "id_proveedor": id_proveedor,
+            "id_ubicacion": id_ubicacion,
+            "fecha_compra": fecha_compra,
+            "comprobante": comprobante,
+            "monto_neto": monto_neto,
+            "iva": iva,
+            "monto_bruto": monto_bruto,
+            "id_usuario": id_usuario,
+        }
+        return JsonResponse(
+            {"factura": nueva_factura, "mensaje": "Factura registrada correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
+
+@csrf_exempt
 def api_autorizaciones(request: Any) -> JsonResponse:
     """GET/POST /api/v1/autorizaciones/ -> consulta o gestiona autorizaciones."""
     role = getattr(request, "jwt_role", None)
@@ -1288,6 +1503,7 @@ def api_solicitudes(request: Any) -> JsonResponse:
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
 
+
 @csrf_exempt
 @require_rbac("obras_mantencion", "R")
 def api_obras(request: Any) -> JsonResponse:
@@ -1385,3 +1601,5 @@ def api_despachos(request: Any) -> JsonResponse:
         )
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
+```[cite: 5, 6]
+
