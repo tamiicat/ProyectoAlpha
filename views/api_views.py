@@ -197,6 +197,11 @@ def api_crear_inventario(request: Any) -> JsonResponse:
         precio=precio,
         stock_critico=stock_critico,
     )
+    if isinstance(creado, dict) and creado.get("error"):
+        return JsonResponse(
+            {"error": creado["error"]},
+            status=int(creado.get("status", 400)),
+        )
     return JsonResponse({"item": creado}, status=201)
 
 
@@ -275,6 +280,7 @@ def api_categorias(request: Any) -> JsonResponse:
                     """
                     INSERT INTO categoria (nombre, activo)
                     VALUES (%s, TRUE)
+                    ON CONFLICT (nombre) DO UPDATE SET activo = TRUE
                     RETURNING id_categoria;
                     """,
                     [nombre[:100]],

@@ -283,16 +283,16 @@ def crear_item_inventario(
     nombre: str,
     stock: int,
     ubicacion: str = "Bodega Central",
-    ubicacion_id: Optional[int] = None,
-    categoria_id: Optional[int] = None,
+    ubicacion_id: Optional[Any] = None,
+    categoria_id: Optional[Any] = None,
     categoria: Optional[str] = None,
     unidad: str = "unidad",
     precio: float = 0.0,
     stock_critico: int = 5,
 ) -> Dict[str, Any]:
     """Crea o actualiza un artículo directamente en la tabla 'articulo'."""
-    cat_ref = categoria_id if categoria_id is not None else categoria
-    ubi_ref = ubicacion_id if ubicacion_id is not None else ubicacion
+    cat_ref = categoria_id if categoria_id not in (None, "") else categoria
+    ubi_ref = ubicacion_id if ubicacion_id not in (None, "") else ubicacion
     cat_final, ubi_final = _resolver_ids_base(cat_ref, ubi_ref)
 
     estado_art = "sin stock" if stock <= 0 else "en bodega"
@@ -307,75 +307,82 @@ def crear_item_inventario(
 
     ahora = datetime.now(timezone.utc)
 
-    with transaction.atomic():
-        existente = None
-        if codigo_sku:
-            existente = Articulo.objects.filter(
-                codigo_de_barras=codigo_sku, activo=True
-            ).first()
-        if not existente:
-            existente = Articulo.objects.filter(
-                nombre__iexact=nombre_limpio, activo=True
-            ).first()
-
-        if existente:
-            existente.nombre = nombre_limpio
-            existente.stock_actual = int(stock)
-            existente.stock_critico = int(stock_critico)
-            existente.unidad_de_medida = unidad_limpia
-            existente.id_categoria = int(cat_final)
-            existente.id_ubicacion = int(ubi_final)
-            existente.precio = precio_dec
-            existente.estado = estado_art
+    try:
+        with transaction.atomic():
+            existente = None
             if codigo_sku:
-                existente.codigo_de_barras = codigo_sku
-            existente.save()
-            obj = existente
-        else:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO articulo (
-                        id_categoria, id_ubicacion, codigo_de_barras, nombre,
-                        stock_actual, stock_critico, unidad_de_medida, precio,
-                        fecha_ingreso, estado, activo
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
-                    RETURNING id_articulo;
-                    """,
-                    [
-                        int(cat_final),
-                        int(ubi_final),
-                        codigo_sku,
-                        nombre_limpio,
-                        int(stock),
-                        int(stock_critico),
-                        unidad_limpia,
-                        precio_dec,
-                        ahora,
-                        estado_art,
-                    ],
-                )
-                nuevo_id = int(cursor.fetchone()[0])
-            obj = Articulo.objects.get(pk=nuevo_id)
+                existente = Articulo.objects.filter(
+                    codigo_de_barras=codigo_sku
+                ).first()
+            if not existente:
+                existente = Articulo.objects.filter(
+                    nombre__iexact=nombre_limpio
+                ).first()
 
-    return {
-        "id": obj.id_articulo,
-        "id_articulo": obj.id_articulo,
-        "id_categoria": obj.id_categoria,
-        "id_ubicacion": obj.id_ubicacion,
-        "sku": obj.codigo_de_barras or f"ART-{obj.id_articulo}",
-        "codigo_de_barras": obj.codigo_de_barras,
-        "nombre": obj.nombre,
-        "stock": obj.stock_actual,
-        "stock_actual": obj.stock_actual,
-        "stock_critico": obj.stock_critico,
-        "unidad_de_medida": obj.unidad_de_medida,
-        "ubicacion": ubicacion or f"Ubicación #{obj.id_ubicacion}",
-        "ubicacion_id": obj.id_ubicacion,
-        "precio": float(obj.precio),
-        "estado": obj.estado,
-    }
+            if existente:
+                existente.nombre = nombre_limpio
+                existente.stock_actual = int(stock)
+                existente.stock_critico = int(stock_critico)
+                existente.unidad_de_medida = unidad_limpia
+                existente.id_categoria = int(cat_final)
+                existente.id_ubicacion = int(ubi_final)
+                existente.precio = precio_dec
+                existente.estado = estado_art
+                existente.activo = True
+                if codigo_sku:
+                    existente.codigo_de_barras = codigo_sku
+                existente.save()
+                obj = existente
+            else:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO articulo (
+                            id_categoria, id_ubicacion, codigo_de_barras, nombre,
+                            stock_actual, stock_critico, unidad_de_medida, precio,
+                            fecha_ingreso, estado, activo
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+                        RETURNING id_articulo;
+                        """,
+                        [
+                            int(cat_final),
+                            int(ubi_final),
+                            codigo_sku,
+                            nombre_limpio,
+                            int(stock),
+                            int(stock_critico),
+                            unidad_limpia,
+                            precio_dec,
+                            ahora,
+                            estado_art,
+                        ],
+                    )
+                    nuevo_id = int(cursor.fetchone()[0])
+                obj = Articulo.objects.get(pk=nuevo_id)
+
+        return {
+            "id": obj.id_articulo,
+            "id_articulo": obj.id_articulo,
+            "id_categoria": obj.id_categoria,
+            "id_ubicacion": obj.id_ubicacion,
+            "sku": obj.codigo_de_barras or f"ART-{obj.id_articulo}",
+            "codigo_de_barras": obj.codigo_de_barras,
+            "nombre": obj.nombre,
+            "stock": obj.stock_actual,
+            "stock_actual": obj.stock_actual,
+            "stock_critico": obj.stock_critico,
+            "unidad_de_medida": obj.unidad_de_medida,
+            "ubicacion": ubicacion or f"Ubicación #{obj.id_ubicacion}",
+            "ubicacion_id": obj.id_ubicacion,
+            "precio": float(obj.precio),
+            "estado": obj.estado,
+        }
+    except Exception as exc:
+        return {
+            "error": f"Error al guardar artículo en BD: {exc}",
+            "status": 400,
+        }
 
 
 def _registrar_cardex_sql(
