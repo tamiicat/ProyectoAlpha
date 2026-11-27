@@ -3,13 +3,20 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../services/api';
 import TourAyuda from '../../components/TourAyuda';
 
-// Configuración visual y de módulos por rol
+// Configuración visual, módulos y acciones rápidas por rol
 const CONFIG_ROLES = {
   admin: {
     titulo: 'Panel Administrador',
     etiqueta: 'Administrador',
     colorPrimario: '#1b2e42',
     colorAcento: '#0ea5e9',
+    verValorizacion: true,
+    accionesRapidas: [
+      { label: 'Crear Cuenta', ruta: '/crear-cuenta', icono: 'bi-person-plus', desc: 'Registrar usuarios' },
+      { label: 'Autorizaciones', ruta: '/autorizaciones', icono: 'bi-shield-check', desc: 'Aprobar cambios' },
+      { label: 'Añadir Artículo', ruta: '/gestionar-inventario', icono: 'bi-plus-square', desc: 'Nuevo insumo' },
+      { label: 'Categorías y Bodegas', ruta: '/gestion-catalogos', icono: 'bi-tags', desc: 'Administrar catálogos' },
+    ],
     secciones: [
       {
         grupo: 'Usuarios y Permisos',
@@ -58,6 +65,13 @@ const CONFIG_ROLES = {
     etiqueta: 'Bodeguero',
     colorPrimario: '#0f3d3e',
     colorAcento: '#10b981',
+    verValorizacion: false,
+    accionesRapidas: [
+      { label: 'Añadir Artículo', ruta: '/gestionar-inventario', icono: 'bi-plus-square', desc: 'Ingresar a bodega' },
+      { label: 'Escanear Código', ruta: '/escaner', icono: 'bi-upc-scan', desc: 'Lectura rápida' },
+      { label: 'Recepción de Compra', ruta: '/recepcion', icono: 'bi-box-arrow-in-down', desc: 'Recibir facturas' },
+      { label: 'Módulo de Despacho', ruta: '/despacho', icono: 'bi-truck', desc: 'Gestionar entregas' },
+    ],
     secciones: [
       {
         grupo: 'Gestión de Bodega',
@@ -80,6 +94,13 @@ const CONFIG_ROLES = {
     etiqueta: 'Técnico',
     colorPrimario: '#1e293b',
     colorAcento: '#f97316',
+    verValorizacion: false,
+    accionesRapidas: [
+      { label: 'Diagnóstico Técnico', ruta: '/diagnostico', icono: 'bi-wrench-adjustable', desc: 'Registrar reporte' },
+      { label: 'Solicitar Artículo', ruta: '/solicitar-articulo', icono: 'bi-cart-plus', desc: 'Pedir materiales' },
+      { label: 'Escanear Código', ruta: '/escaner', icono: 'bi-upc-scan', desc: 'Consultar insumo' },
+      { label: 'Gestión de Obras', ruta: '/gestion-obras', icono: 'bi-building-gear', desc: 'Ver obras activas' },
+    ],
     secciones: [
       {
         grupo: 'Operaciones en Terreno',
@@ -98,6 +119,13 @@ const CONFIG_ROLES = {
     etiqueta: 'Finanzas',
     colorPrimario: '#1e1b4b',
     colorAcento: '#6366f1',
+    verValorizacion: true,
+    accionesRapidas: [
+      { label: 'Módulo de Compras', ruta: '/modulo-compras', icono: 'bi-bag-check', desc: 'Registrar compras' },
+      { label: 'Gestión de Facturas', ruta: '/gestion-facturas', icono: 'bi-receipt', desc: 'Revisar documentos' },
+      { label: 'Reporte Financiero', ruta: '/reporte-financiero', icono: 'bi-graph-up-arrow', desc: 'Ver balance' },
+      { label: 'Proveedores', ruta: '/gestion-proveedores', icono: 'bi-buildings', desc: 'Administrar entidades' },
+    ],
     secciones: [
       {
         grupo: 'Gestión Financiera',
@@ -116,6 +144,13 @@ const CONFIG_ROLES = {
     etiqueta: 'Supervisor',
     colorPrimario: '#27272a',
     colorAcento: '#f59e0b',
+    verValorizacion: true,
+    accionesRapidas: [
+      { label: 'Autorizaciones', ruta: '/autorizaciones', icono: 'bi-shield-check', desc: 'Pendientes de aprobar' },
+      { label: 'Ver Mermas', ruta: '/ver-mermas', icono: 'bi-clipboard-x', desc: 'Revisar pérdidas' },
+      { label: 'Gestión de Obras', ruta: '/gestion-obras', icono: 'bi-building-gear', desc: 'Control de avances' },
+      { label: 'Cardex', ruta: '/cardex', icono: 'bi-journal-text', desc: 'Historial de stock' },
+    ],
     secciones: [
       {
         grupo: 'Supervisión y Control',
@@ -139,6 +174,11 @@ export default function Dashboard({ rol = 'admin' }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [menuAbierto, setMenuAbierto] = useState(false);
+
+  // Filtros de inventario por bodega y búsqueda
+  const [bodegaSeleccionada, setBodegaSeleccionada] = useState('TODAS');
+  const [vistaTabla, setVistaTabla] = useState('todo'); // 'todo' | 'alertas'
+  const [busqueda, setBusqueda] = useState('');
 
   const tema = CONFIG_ROLES[rol] || CONFIG_ROLES.admin;
 
@@ -184,6 +224,7 @@ export default function Dashboard({ rol = 'admin' }) {
       const critico = Number(it.stock_critico ?? 5);
       const precio = Number(it.precio ?? 0);
       const ubicacion = it.ubicacion_nombre ?? it.ubicacion ?? 'Bodega Central';
+      const unidad = it.unidad_de_medida ?? 'Unid.';
 
       let estado = 'optimo';
       if (stock <= critico) estado = 'critico';
@@ -194,6 +235,7 @@ export default function Dashboard({ rol = 'admin' }) {
         nombre: it.nombre ?? 'Sin nombre',
         codigo: it.codigo_de_barras ?? it.sku ?? 'S/N',
         ubicacion,
+        unidad,
         stock,
         critico,
         precio,
@@ -202,20 +244,53 @@ export default function Dashboard({ rol = 'admin' }) {
     });
   }, [items]);
 
-  const kpis = useMemo(() => {
-    const total = normalizados.length;
-    const optimos = normalizados.filter((i) => i.estado === 'optimo').length;
-    const bajos = normalizados.filter((i) => i.estado === 'bajo').length;
-    const criticos = normalizados.filter((i) => i.estado === 'critico').length;
-    const valorTotal = normalizados.reduce((acc, i) => acc + i.stock * i.precio, 0);
-    return { total, optimos, bajos, criticos, alertas: bajos + criticos, valorTotal };
+  // Lista única de bodegas para el filtro
+  const listaBodegas = useMemo(() => {
+    const unicas = Array.from(new Set(normalizados.map((i) => i.ubicacion)));
+    return unicas.sort((a, b) => a.localeCompare(b));
   }, [normalizados]);
 
+  // Inventario filtrado por la bodega seleccionada
+  const itemsFiltradosBodega = useMemo(() => {
+    if (bodegaSeleccionada === 'TODAS') return normalizados;
+    return normalizados.filter((i) => i.ubicacion === bodegaSeleccionada);
+  }, [normalizados, bodegaSeleccionada]);
+
+  const kpis = useMemo(() => {
+    const total = itemsFiltradosBodega.length;
+    const optimos = itemsFiltradosBodega.filter((i) => i.estado === 'optimo').length;
+    const bajos = itemsFiltradosBodega.filter((i) => i.estado === 'bajo').length;
+    const criticos = itemsFiltradosBodega.filter((i) => i.estado === 'critico').length;
+    const unidadesTotales = itemsFiltradosBodega.reduce((acc, i) => acc + i.stock, 0);
+    const valorTotal = itemsFiltradosBodega.reduce((acc, i) => acc + i.stock * i.precio, 0);
+    return {
+      total,
+      optimos,
+      bajos,
+      criticos,
+      alertas: bajos + criticos,
+      unidadesTotales,
+      valorTotal,
+    };
+  }, [itemsFiltradosBodega]);
+
   const alertasStock = useMemo(() => {
-    return normalizados
+    return itemsFiltradosBodega
       .filter((i) => i.estado === 'critico' || i.estado === 'bajo')
       .sort((a, b) => a.stock - b.stock);
-  }, [normalizados]);
+  }, [itemsFiltradosBodega]);
+
+  const itemsTabla = useMemo(() => {
+    const base = vistaTabla === 'alertas' ? alertasStock : itemsFiltradosBodega;
+    const termino = busqueda.trim().toLowerCase();
+    if (!termino) return base;
+    return base.filter(
+      (i) =>
+        i.nombre.toLowerCase().includes(termino) ||
+        String(i.codigo).toLowerCase().includes(termino) ||
+        i.ubicacion.toLowerCase().includes(termino)
+    );
+  }, [vistaTabla, alertasStock, itemsFiltradosBodega, busqueda]);
 
   const porUbicacion = useMemo(() => {
     const mapa = {};
@@ -365,7 +440,26 @@ export default function Dashboard({ rol = 'admin' }) {
             </div>
           </div>
 
-          <div className="d-flex align-items-center gap-2" data-tour="header-acciones">
+          <div className="d-flex flex-wrap align-items-center gap-2" data-tour="header-acciones">
+            {/* Filtro global por Bodega */}
+            <div className="d-flex align-items-center gap-2">
+              <i className="bi bi-funnel text-muted"></i>
+              <select
+                className="form-select form-select-sm rounded-pill bg-light border-secondary-subtle fw-semibold"
+                style={{ minWidth: '190px' }}
+                value={bodegaSeleccionada}
+                onChange={(e) => setBodegaSeleccionada(e.target.value)}
+                aria-label="Filtrar por bodega"
+              >
+                <option value="TODAS">Todas las bodegas ({normalizados.length})</option>
+                {listaBodegas.map((bod) => (
+                  <option key={bod} value={bod}>
+                    {bod}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <span
               className={`badge rounded-pill px-3 py-2 ${
                 loading
@@ -399,6 +493,47 @@ export default function Dashboard({ rol = 'admin' }) {
             </div>
           )}
 
+          {/* Acciones Rápidas personalizadas por Rol */}
+          <div className="mb-4">
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <h6 className="text-uppercase text-muted fw-bold small mb-0" style={{ letterSpacing: '0.06em' }}>
+                Acciones Rápidas · {tema.etiqueta}
+              </h6>
+            </div>
+            <div className="row g-3">
+              {tema.accionesRapidas.map((acc) => (
+                <div key={acc.ruta} className="col-12 col-sm-6 col-xl-3">
+                  <Link
+                    to={acc.ruta}
+                    className="card border-0 shadow-sm rounded-4 text-decoration-none h-100"
+                    style={{ transition: 'transform 0.15s ease' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+                  >
+                    <div className="card-body d-flex align-items-center gap-3 py-3">
+                      <div
+                        className="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0 text-white"
+                        style={{
+                          width: '44px',
+                          height: '44px',
+                          backgroundColor: tema.colorAcento,
+                        }}
+                      >
+                        <i className={`bi ${acc.icono} fs-5`}></i>
+                      </div>
+                      <div className="overflow-hidden">
+                        <div className="fw-bold text-truncate" style={{ color: tema.colorPrimario }}>
+                          {acc.label}
+                        </div>
+                        <small className="text-muted text-truncate d-block">{acc.desc}</small>
+                      </div>
+                    </div>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Tarjetas KPI */}
           <div className="row g-3 mb-4" data-tour="kpis">
             <div className="col-12 col-sm-6 col-xl-3">
@@ -413,7 +548,9 @@ export default function Dashboard({ rol = 'admin' }) {
                   <h2 className="fw-bold mb-1" style={{ color: tema.colorPrimario }}>
                     {loading ? '...' : kpis.total}
                   </h2>
-                  <small className="text-secondary">Insumos registrados</small>
+                  <small className="text-secondary">
+                    {bodegaSeleccionada === 'TODAS' ? 'Todas las bodegas' : bodegaSeleccionada}
+                  </small>
                 </div>
               </div>
             </div>
@@ -464,80 +601,164 @@ export default function Dashboard({ rol = 'admin' }) {
                 style={{ borderLeft: `4px solid ${tema.colorPrimario}` }}
               >
                 <div className="card-body">
-                  <p className="text-muted small fw-semibold text-uppercase mb-1">
-                    Valorización Stock
-                  </p>
-                  <h2 className="fw-bold mb-1" style={{ color: tema.colorAcento }}>
-                    {loading ? '...' : `$${kpis.valorTotal.toLocaleString('es-CL')}`}
-                  </h2>
-                  <small className="text-secondary">Estimado en CLP</small>
+                  {tema.verValorizacion ? (
+                    <>
+                      <p className="text-muted small fw-semibold text-uppercase mb-1">
+                        Valorización Stock
+                      </p>
+                      <h2 className="fw-bold mb-1" style={{ color: tema.colorAcento }}>
+                        {loading ? '...' : `$${kpis.valorTotal.toLocaleString('es-CL')}`}
+                      </h2>
+                      <small className="text-secondary">Estimado en CLP</small>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-muted small fw-semibold text-uppercase mb-1">
+                        Unidades en Stock
+                      </p>
+                      <h2 className="fw-bold mb-1" style={{ color: tema.colorAcento }}>
+                        {loading ? '...' : kpis.unidadesTotales.toLocaleString('es-CL')}
+                      </h2>
+                      <small className="text-secondary">Existencias físicas</small>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Alertas + Distribución por Ubicación */}
+          {/* Inventario / Alertas filtrable + Distribución por Ubicación */}
           <div className="row g-4">
             <div className="col-12 col-xl-8" data-tour="alertas-stock">
               <div className="card border-0 shadow-sm rounded-4 h-100">
-                <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center rounded-top-4">
+                <div className="card-header bg-white border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 rounded-top-4">
                   <div>
                     <h5 className="mb-0 fw-bold" style={{ color: tema.colorPrimario }}>
-                      Alertas de Reposición Prioritaria
+                      {vistaTabla === 'alertas'
+                        ? 'Alertas de Reposición Prioritaria'
+                        : 'Inventario General'}
+                      {bodegaSeleccionada !== 'TODAS' && (
+                        <span className="badge bg-light text-dark border ms-2 fw-normal fs-6">
+                          {bodegaSeleccionada}
+                        </span>
+                      )}
                     </h5>
-                    <small className="text-muted">Artículos en nivel preventivo o crítico</small>
+                    <small className="text-muted">
+                      {vistaTabla === 'alertas'
+                        ? 'Artículos en nivel preventivo o crítico'
+                        : 'Listado completo filtrado por bodega'}
+                    </small>
                   </div>
-                  <Link
-                    to="/inventario"
-                    className="btn btn-sm rounded-pill px-3 text-white fw-semibold"
-                    style={{ backgroundColor: tema.colorAcento }}
-                  >
-                    Ver inventario
-                  </Link>
+
+                  <div className="d-flex align-items-center gap-2">
+                    <div className="btn-group btn-group-sm" role="group">
+                      <button
+                        type="button"
+                        onClick={() => setVistaTabla('todo')}
+                        className={`btn ${
+                          vistaTabla === 'todo' ? 'text-white' : 'btn-outline-secondary'
+                        }`}
+                        style={vistaTabla === 'todo' ? { backgroundColor: tema.colorPrimario } : {}}
+                      >
+                        Todo ({itemsFiltradosBodega.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVistaTabla('alertas')}
+                        className={`btn ${
+                          vistaTabla === 'alertas' ? 'btn-danger text-white' : 'btn-outline-secondary'
+                        }`}
+                      >
+                        Alertas ({alertasStock.length})
+                      </button>
+                    </div>
+                    <Link
+                      to="/inventario"
+                      className="btn btn-sm rounded-pill px-3 text-white fw-semibold"
+                      style={{ backgroundColor: tema.colorAcento }}
+                    >
+                      Abrir módulo
+                    </Link>
+                  </div>
                 </div>
+
+                {/* Buscador rápido */}
+                <div className="px-3 pt-3 pb-2 bg-light border-bottom">
+                  <div className="input-group input-group-sm">
+                    <span className="input-group-text bg-white border-end-0 text-muted">
+                      <i className="bi bi-search"></i>
+                    </span>
+                    <input
+                      type="text"
+                      className="form-control border-start-0"
+                      placeholder="Buscar por nombre, código de barras o bodega..."
+                      value={busqueda}
+                      onChange={(e) => setBusqueda(e.target.value)}
+                    />
+                    {busqueda && (
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        onClick={() => setBusqueda('')}
+                      >
+                        <i className="bi bi-x"></i>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="card-body p-0">
                   {loading ? (
                     <div className="p-5 text-center text-muted">
                       <div className="spinner-border spinner-border-sm me-2" />
                       Cargando inventario...
                     </div>
-                  ) : alertasStock.length === 0 ? (
+                  ) : itemsTabla.length === 0 ? (
                     <div className="p-5 text-center">
                       <span className="badge bg-success-subtle text-success px-3 py-2 rounded-pill mb-2">
-                        <i className="bi bi-check-circle-fill me-1"></i>Todo en orden
+                        <i className="bi bi-check-circle-fill me-1"></i>Sin coincidencias
                       </span>
                       <p className="text-muted mb-0">
-                        No hay quiebres de stock ni artículos críticos en este momento.
+                        {vistaTabla === 'alertas'
+                          ? 'No hay quiebres de stock ni artículos críticos en esta vista.'
+                          : 'No se encontraron artículos para el filtro seleccionado.'}
                       </p>
                     </div>
                   ) : (
-                    <div className="table-responsive">
+                    <div className="table-responsive" style={{ maxHeight: '380px', overflowY: 'auto' }}>
                       <table className="table table-hover align-middle mb-0">
-                        <thead className="table-light">
+                        <thead className="table-light sticky-top">
                           <tr>
                             <th className="ps-3">Artículo</th>
-                            <th>Ubicación</th>
+                            <th>Bodega / Ubicación</th>
                             <th className="text-center">Stock</th>
                             <th className="text-center">Crítico</th>
                             <th className="text-end pe-3">Estado</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {alertasStock.slice(0, 6).map((item) => (
+                          {itemsTabla.map((item) => (
                             <tr key={item.id}>
                               <td className="ps-3">
                                 <div className="fw-semibold">{item.nombre}</div>
                                 <small className="text-muted">{item.codigo}</small>
                               </td>
                               <td>{item.ubicacion}</td>
-                              <td className="text-center fw-bold">{item.stock}</td>
+                              <td className="text-center fw-bold">
+                                {item.stock}{' '}
+                                <span className="fw-normal text-muted small">{item.unidad}</span>
+                              </td>
                               <td className="text-center text-muted">{item.critico}</td>
                               <td className="text-end pe-3">
                                 {item.estado === 'critico' ? (
                                   <span className="badge rounded-pill bg-danger">Crítico</span>
-                                ) : (
+                                ) : item.estado === 'bajo' ? (
                                   <span className="badge rounded-pill bg-warning text-dark">
                                     Stock Bajo
+                                  </span>
+                                ) : (
+                                  <span className="badge rounded-pill bg-success-subtle text-success">
+                                    Óptimo
                                   </span>
                                 )}
                               </td>
@@ -551,13 +772,25 @@ export default function Dashboard({ rol = 'admin' }) {
               </div>
             </div>
 
+            {/* Stock por Ubicación (interactivo para filtrar) */}
             <div className="col-12 col-xl-4" data-tour="stock-ubicacion">
               <div className="card border-0 shadow-sm rounded-4 h-100">
-                <div className="card-header bg-white border-bottom py-3 rounded-top-4">
-                  <h5 className="mb-0 fw-bold" style={{ color: tema.colorPrimario }}>
-                    Stock por Ubicación
-                  </h5>
-                  <small className="text-muted">Distribución de artículos en bodegas</small>
+                <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center rounded-top-4">
+                  <div>
+                    <h5 className="mb-0 fw-bold" style={{ color: tema.colorPrimario }}>
+                      Stock por Bodega
+                    </h5>
+                    <small className="text-muted">Haz clic en una bodega para filtrar</small>
+                  </div>
+                  {bodegaSeleccionada !== 'TODAS' && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary rounded-pill px-2 py-0"
+                      onClick={() => setBodegaSeleccionada('TODAS')}
+                    >
+                      Ver todas
+                    </button>
+                  )}
                 </div>
                 <div className="card-body">
                   {loading ? (
@@ -565,26 +798,42 @@ export default function Dashboard({ rol = 'admin' }) {
                   ) : porUbicacion.length === 0 ? (
                     <p className="text-muted text-center my-4">Sin datos para mostrar.</p>
                   ) : (
-                    <div className="d-flex flex-column gap-3">
-                      {porUbicacion.map((ub) => (
-                        <div key={ub.nombre}>
-                          <div className="d-flex justify-content-between small mb-1">
-                            <span className="fw-semibold text-dark">{ub.nombre}</span>
-                            <span className="text-muted">
-                              {ub.cantidad} ({ub.porcentaje}%)
-                            </span>
-                          </div>
-                          <div className="progress" style={{ height: '8px' }}>
-                            <div
-                              className="progress-bar"
-                              style={{
-                                width: `${ub.porcentaje}%`,
-                                backgroundColor: tema.colorAcento,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))}
+                    <div className="d-flex flex-column gap-2">
+                      {porUbicacion.map((ub) => {
+                        const activa = bodegaSeleccionada === ub.nombre;
+                        return (
+                          <button
+                            key={ub.nombre}
+                            type="button"
+                            onClick={() =>
+                              setBodegaSeleccionada(activa ? 'TODAS' : ub.nombre)
+                            }
+                            className={`text-start border rounded-3 p-2 bg-transparent ${
+                              activa ? 'border-primary bg-primary bg-opacity-10' : 'border-light-subtle'
+                            }`}
+                            style={{ cursor: 'pointer', transition: 'all 0.15s' }}
+                          >
+                            <div className="d-flex justify-content-between small mb-1">
+                              <span className="fw-semibold text-dark">
+                                {activa && <i className="bi bi-check-circle-fill text-primary me-1"></i>}
+                                {ub.nombre}
+                              </span>
+                              <span className="text-muted">
+                                {ub.cantidad} ({ub.porcentaje}%)
+                              </span>
+                            </div>
+                            <div className="progress" style={{ height: '8px' }}>
+                              <div
+                                className="progress-bar"
+                                style={{
+                                  width: `${ub.porcentaje}%`,
+                                  backgroundColor: tema.colorAcento,
+                                }}
+                              />
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
