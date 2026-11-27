@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../services/api';
 
 export default function Cardex() {
-    const navigate = useNavigate();
     const comprobanteRef = useRef(null);
 
     const [movimientos, setMovimientos] = useState([]);
@@ -13,6 +11,10 @@ export default function Cardex() {
     const [filtroTipo, setFiltroTipo] = useState('');
     const [movimientoSeleccionado, setMovimientoSeleccionado] = useState(null);
     const [modoImpresion, setModoImpresion] = useState('ficha'); // 'ficha' | 'historial'
+
+    // Paginación y cantidad visible
+    const [filasPorPagina, setFilasPorPagina] = useState(10);
+    const [paginaActual, setPaginaActual] = useState(1);
 
     useEffect(() => {
         setCargando(true);
@@ -53,6 +55,11 @@ export default function Cardex() {
             });
     }, []);
 
+    // Reinicia a la página 1 cuando cambian los filtros o el tamaño de página
+    useEffect(() => {
+        setPaginaActual(1);
+    }, [busqueda, filtroTipo, filasPorPagina]);
+
     const formatearCLP = (valor) => {
         return new Intl.NumberFormat('es-CL', {
             style: 'currency',
@@ -61,7 +68,32 @@ export default function Cardex() {
         }).format(valor);
     };
 
-    // Estilos WCAG alto contraste por tipo de movimiento
+    const formatearFechaHora = (valor) => {
+        if (!valor || valor === 'Sin fecha') return 'Sin fecha';
+        const fechaObj = new Date(valor);
+        if (Number.isNaN(fechaObj.getTime())) {
+            return String(valor).replace('T', ' ').slice(0, 16);
+        }
+        return fechaObj.toLocaleString('es-CL', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
+    const esEgresoStock = (tipo, cantidad) => {
+        const t = String(tipo || '').toLowerCase();
+        if (t.includes('salida') || t.includes('egreso') || t.includes('merma')) return true;
+        return Number(cantidad) < 0;
+    };
+
+    const obtenerCantidadConSigno = (tipo, cantidad) => {
+        const absCant = Math.abs(Number(cantidad ?? 0));
+        return esEgresoStock(tipo, cantidad) ? -absCant : absCant;
+    };
+
     const obtenerEstiloTipo = (tipo) => {
         const tipoNormalizado = (tipo || '').toLowerCase();
         if (tipoNormalizado.includes('ingreso')) {
@@ -112,6 +144,12 @@ export default function Cardex() {
         return coincideTipo && coincideBusqueda;
     });
 
+    const totalPaginas = Math.max(1, Math.ceil(movimientosFiltrados.length / filasPorPagina));
+    const paginaSegura = Math.min(paginaActual, totalPaginas);
+    const indiceInicio = (paginaSegura - 1) * filasPorPagina;
+    const indiceFin = Math.min(indiceInicio + filasPorPagina, movimientosFiltrados.length);
+    const movimientosPaginados = movimientosFiltrados.slice(indiceInicio, indiceFin);
+
     const handleSeleccionarYVerComprobante = (mov) => {
         setMovimientoSeleccionado(mov);
         setTimeout(() => {
@@ -126,6 +164,13 @@ export default function Cardex() {
         }, 100);
     };
 
+    const cantidadSignadaSeleccionada = movimientoSeleccionado
+        ? obtenerCantidadConSigno(movimientoSeleccionado.tipo_movimiento, movimientoSeleccionado.cantidad)
+        : 0;
+    const estiloSeleccionado = movimientoSeleccionado
+        ? obtenerEstiloTipo(movimientoSeleccionado.tipo_movimiento)
+        : null;
+
     return (
         <div className="container-xl mt-4 mt-md-5 mb-5">
             {/* Tarjeta Principal: Historial de Movimientos */}
@@ -134,32 +179,28 @@ export default function Cardex() {
                 style={{ borderRadius: '25px', overflow: 'hidden' }}
             >
                 <div
-                    className="d-flex flex-column flex-md-row justify-content-between align-items-center p-4 px-md-5 gap-3"
+                    className="d-flex flex-column flex-md-row justify-content-between align-items-md-center p-4 px-md-5 gap-3"
                     style={{ backgroundColor: '#2b3d52', color: 'white' }}
                 >
                     <div className="d-flex align-items-center">
-                        <img src="/img/logo-fyag.png" alt="Logo FYAG" style={{ height: '60px', objectFit: 'contain' }} />
+                        <img
+                            src="/img/logo-fyag.png"
+                            alt="Logo FYAG"
+                            style={{ height: '60px', objectFit: 'contain', flexShrink: 0 }}
+                        />
                         <div className="ms-3 ms-md-4">
                             <h3 className="mb-0 fw-semibold">Cardex FYAG</h3>
                             <span className="small opacity-75">Registro e historial auditable de movimientos del inventario</span>
                         </div>
                     </div>
-                    <div className="d-flex flex-column flex-sm-row gap-2 w-100 w-md-auto d-print-none">
+                    <div className="d-flex gap-2 d-print-none">
                         <button
                             type="button"
                             onClick={() => handleImprimir('historial')}
                             className="btn btn-light rounded-pill px-4 fw-semibold"
-                            style={{ color: '#2b3d52', minHeight: '48px' }}
+                            style={{ color: '#2b3d52', minHeight: '44px' }}
                         >
                             <i className="bi bi-printer me-2"></i> Imprimir Historial
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => navigate(-1)}
-                            className="btn btn-outline-light rounded-pill px-4 fw-semibold"
-                            style={{ minHeight: '48px' }}
-                        >
-                            Volver al menú
                         </button>
                     </div>
                 </div>
@@ -199,10 +240,31 @@ export default function Cardex() {
                         </div>
                     </div>
 
-                    <p className="small text-muted mb-3 d-print-none">
-                        <i className="bi bi-hand-index-thumb me-1"></i>
-                        Seleccione un movimiento para ver su comprobante imprimible abajo.
-                    </p>
+                    {/* Barra superior de control: selector de cantidad por página + resumen */}
+                    <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3 d-print-none">
+                        <p className="small text-muted mb-0">
+                            <i className="bi bi-hand-index-thumb me-1"></i>
+                            Seleccione un movimiento para ver su comprobante imprimible abajo.
+                        </p>
+                        <div className="d-flex align-items-center gap-2">
+                            <label htmlFor="selectFilasCardex" className="small text-muted fw-semibold mb-0">
+                                Mostrar:
+                            </label>
+                            <select
+                                id="selectFilasCardex"
+                                value={filasPorPagina}
+                                onChange={(e) => setFilasPorPagina(Number(e.target.value))}
+                                className="form-select form-select-sm bg-light border-secondary-subtle fw-semibold"
+                                style={{ width: 'auto', minHeight: '36px' }}
+                            >
+                                <option value={10}>10</option>
+                                <option value={15}>15</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                            </select>
+                            <span className="small text-muted">por página</span>
+                        </div>
+                    </div>
 
                     {/* VISTA ESCRITORIO Y PDF: Tabla tradicional */}
                     <div className="d-none d-md-block d-print-block table-responsive shadow-sm rounded border">
@@ -227,7 +289,7 @@ export default function Cardex() {
                                             Cargando movimientos del Cardex...
                                         </td>
                                     </tr>
-                                ) : movimientosFiltrados.length === 0 ? (
+                                ) : movimientosPaginados.length === 0 ? (
                                     <tr>
                                         <td colSpan="9" className="text-center py-4 text-muted">
                                             {errorCarga
@@ -236,11 +298,12 @@ export default function Cardex() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    movimientosFiltrados.map((mov) => {
+                                    movimientosPaginados.map((mov) => {
                                         const estaSeleccionado =
                                             movimientoSeleccionado &&
                                             movimientoSeleccionado.id_cardex === mov.id_cardex;
                                         const estilo = obtenerEstiloTipo(mov.tipo_movimiento);
+                                        const cantSignada = obtenerCantidadConSigno(mov.tipo_movimiento, mov.cantidad);
 
                                         return (
                                             <tr
@@ -250,7 +313,7 @@ export default function Cardex() {
                                                 style={{ cursor: 'pointer' }}
                                             >
                                                 <td className="px-4 fw-semibold text-muted">#{mov.id_cardex}</td>
-                                                <td className="small text-muted">{mov.fecha}</td>
+                                                <td className="small text-muted">{formatearFechaHora(mov.fecha)}</td>
                                                 <td className="fw-semibold">{mov.articulo_nombre}</td>
                                                 <td className="small">{mov.usuario_nombre}</td>
                                                 <td className="text-center">
@@ -262,10 +325,10 @@ export default function Cardex() {
                                                 <td className="small text-muted">{mov.referencia}</td>
                                                 <td
                                                     className={`text-center fw-bold ${
-                                                        mov.cantidad > 0 ? 'text-success' : 'text-danger'
+                                                        cantSignada >= 0 ? 'text-success' : 'text-danger'
                                                     }`}
                                                 >
-                                                    {mov.cantidad > 0 ? `+${mov.cantidad}` : mov.cantidad}
+                                                    {cantSignada > 0 ? `+${cantSignada}` : cantSignada}
                                                 </td>
                                                 <td className="text-center fw-semibold">{mov.stock_resultante}</td>
                                                 <td className="text-end px-4 fw-semibold">
@@ -285,7 +348,7 @@ export default function Cardex() {
                             <div className="text-center py-4 text-muted border rounded-4 bg-light">
                                 Cargando movimientos del Cardex...
                             </div>
-                        ) : movimientosFiltrados.length === 0 ? (
+                        ) : movimientosPaginados.length === 0 ? (
                             <div className="text-center py-4 text-muted border rounded-4 bg-light">
                                 {errorCarga
                                     ? 'No hay datos disponibles por un error de conexión o autenticación.'
@@ -293,11 +356,12 @@ export default function Cardex() {
                             </div>
                         ) : (
                             <div className="d-flex flex-column gap-3">
-                                {movimientosFiltrados.map((mov) => {
+                                {movimientosPaginados.map((mov) => {
                                     const estaSeleccionado =
                                         movimientoSeleccionado &&
                                         movimientoSeleccionado.id_cardex === mov.id_cardex;
                                     const estilo = obtenerEstiloTipo(mov.tipo_movimiento);
+                                    const cantSignada = obtenerCantidadConSigno(mov.tipo_movimiento, mov.cantidad);
 
                                     return (
                                         <div
@@ -314,7 +378,7 @@ export default function Cardex() {
                                                 <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                                                     <div>
                                                         <span className="text-muted small fw-semibold d-block">
-                                                            #{mov.id_cardex} · {mov.fecha}
+                                                            #{mov.id_cardex} · {formatearFechaHora(mov.fecha)}
                                                         </span>
                                                         <h6 className="fw-bold mb-0 mt-1" style={{ color: '#2b3d52' }}>
                                                             {mov.articulo_nombre}
@@ -334,8 +398,8 @@ export default function Cardex() {
                                                 <div className="row g-2 bg-white rounded-3 p-2 border mb-3 text-center">
                                                     <div className="col-4 border-end">
                                                         <span className="d-block text-muted" style={{ fontSize: '0.75rem' }}>Cantidad</span>
-                                                        <span className={`fw-bold ${mov.cantidad > 0 ? 'text-success' : 'text-danger'}`}>
-                                                            {mov.cantidad > 0 ? `+${mov.cantidad}` : mov.cantidad}
+                                                        <span className={`fw-bold ${cantSignada >= 0 ? 'text-success' : 'text-danger'}`}>
+                                                            {cantSignada > 0 ? `+${cantSignada}` : cantSignada}
                                                         </span>
                                                     </div>
                                                     <div className="col-4 border-end">
@@ -370,6 +434,37 @@ export default function Cardex() {
                             </div>
                         )}
                     </div>
+
+                    {/* Controles de paginación */}
+                    {!cargando && movimientosFiltrados.length > 0 && (
+                        <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3 mt-4 pt-3 border-top d-print-none">
+                            <span className="small text-muted">
+                                Mostrando <strong>{indiceInicio + 1}–{indiceFin}</strong> de{' '}
+                                <strong>{movimientosFiltrados.length}</strong> movimientos
+                            </span>
+                            <div className="d-flex align-items-center gap-2">
+                                <button
+                                    type="button"
+                                    disabled={paginaSegura <= 1}
+                                    onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                                    className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                >
+                                    <i className="bi bi-chevron-left me-1"></i> Anterior
+                                </button>
+                                <span className="small fw-semibold px-2" style={{ color: '#2b3d52' }}>
+                                    Página {paginaSegura} de {totalPaginas}
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={paginaSegura >= totalPaginas}
+                                    onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
+                                    className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                >
+                                    Siguiente <i className="bi bi-chevron-right ms-1"></i>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -380,13 +475,17 @@ export default function Cardex() {
                     className={`shadow-lg bg-white border ${modoImpresion === 'historial' ? 'd-print-none' : ''}`}
                     style={{ borderRadius: '25px', overflow: 'hidden', maxWidth: '900px', margin: '0 auto' }}
                 >
-                    {/* Cabecera del Comprobante */}
+                    {/* Cabecera limpia del Comprobante */}
                     <div
-                        className="d-flex flex-column flex-md-row justify-content-between align-items-center p-4 px-md-5 gap-3"
+                        className="d-flex justify-content-between align-items-center p-4 px-md-5 gap-3"
                         style={{ backgroundColor: '#2b3d52', color: 'white' }}
                     >
                         <div className="d-flex align-items-center">
-                            <img src="/img/logo-fyag.png" alt="Logo FYAG" style={{ height: '55px', objectFit: 'contain' }} />
+                            <img
+                                src="/img/logo-fyag.png"
+                                alt="Logo FYAG"
+                                style={{ height: '55px', objectFit: 'contain', flexShrink: 0 }}
+                            />
                             <div className="ms-3 ms-md-4">
                                 <h4 className="mb-0 fw-semibold">
                                     Comprobante de Cardex #{movimientoSeleccionado.id_cardex}
@@ -396,16 +495,12 @@ export default function Cardex() {
                                 </span>
                             </div>
                         </div>
-                        <div className="w-100 w-md-auto d-print-none">
-                            <button
-                                type="button"
-                                onClick={() => handleImprimir('ficha')}
-                                className="btn btn-light rounded-pill px-4 fw-semibold w-100 w-md-auto"
-                                style={{ color: '#2b3d52', minHeight: '48px' }}
-                            >
-                                <i className="bi bi-file-earmark-pdf me-2"></i> Exportar PDF / Imprimir
-                            </button>
-                        </div>
+                        {estiloSeleccionado && (
+                            <span className={`badge ${estiloSeleccionado.claseBadge} px-3 py-2 rounded-pill flex-shrink-0`}>
+                                <i className={`bi ${estiloSeleccionado.icono} me-1`}></i>
+                                {movimientoSeleccionado.tipo_movimiento}
+                            </span>
+                        )}
                     </div>
 
                     {/* Cuerpo del Comprobante */}
@@ -419,11 +514,11 @@ export default function Cardex() {
                                     <span className="fw-bold text-muted">N° Movimiento:</span> #{movimientoSeleccionado.id_cardex}
                                 </p>
                                 <p className="mb-2">
-                                    <span className="fw-bold text-muted">Fecha y Hora:</span> {movimientoSeleccionado.fecha}
+                                    <span className="fw-bold text-muted">Fecha y Hora:</span> {formatearFechaHora(movimientoSeleccionado.fecha)}
                                 </p>
                                 <p className="mb-2">
                                     <span className="fw-bold text-muted">Tipo:</span>{' '}
-                                    <span className={`badge ${obtenerEstiloTipo(movimientoSeleccionado.tipo_movimiento).claseBadge} px-3 py-1 rounded-pill`}>
+                                    <span className={`badge ${estiloSeleccionado?.claseBadge || 'bg-secondary text-white'} px-3 py-1 rounded-pill`}>
                                         {movimientoSeleccionado.tipo_movimiento}
                                     </span>
                                 </p>
@@ -444,10 +539,10 @@ export default function Cardex() {
                                 </p>
                                 <p className="mb-2">
                                     <span className="fw-bold text-muted">Cantidad Movida:</span>{' '}
-                                    <strong className={movimientoSeleccionado.cantidad > 0 ? 'text-success' : 'text-danger'}>
-                                        {movimientoSeleccionado.cantidad > 0
-                                            ? `+${movimientoSeleccionado.cantidad}`
-                                            : movimientoSeleccionado.cantidad}{' '}
+                                    <strong className={cantidadSignadaSeleccionada >= 0 ? 'text-success' : 'text-danger'}>
+                                        {cantidadSignadaSeleccionada > 0
+                                            ? `+${cantidadSignadaSeleccionada}`
+                                            : cantidadSignadaSeleccionada}{' '}
                                         unidades
                                     </strong>
                                 </p>
@@ -463,7 +558,7 @@ export default function Cardex() {
                                     <span className="fw-bold text-muted">Valorización del Movimiento:</span>{' '}
                                     <strong className="text-dark">
                                         {formatearCLP(
-                                            Math.abs(movimientoSeleccionado.cantidad) * movimientoSeleccionado.costo_unitario
+                                            Math.abs(cantidadSignadaSeleccionada) * movimientoSeleccionado.costo_unitario
                                         )}
                                     </strong>
                                 </p>
@@ -488,6 +583,18 @@ export default function Cardex() {
                                 V°B° Supervisión / Bodega FYAG
                             </div>
                         </div>
+                    </div>
+
+                    {/* Pie inferior con botón de exportación bien alineado */}
+                    <div className="d-flex justify-content-end px-4 px-md-5 py-3 bg-light border-top d-print-none">
+                        <button
+                            type="button"
+                            onClick={() => handleImprimir('ficha')}
+                            className="btn text-white rounded-pill px-4 fw-semibold"
+                            style={{ backgroundColor: '#2b3d52', minHeight: '42px' }}
+                        >
+                            <i className="bi bi-file-earmark-pdf me-2"></i> Exportar PDF / Imprimir
+                        </button>
                     </div>
                 </div>
             )}

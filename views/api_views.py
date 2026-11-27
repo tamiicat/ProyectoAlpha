@@ -1971,6 +1971,8 @@ def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
 @require_rbac("inventario_bodega", "U")
 def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
     """PATCH /api/v1/despachos/<id_despacho>/ -> actualiza estado real en PostgreSQL."""
+    from django.db import transaction
+
     if request.method not in ("PATCH", "PUT"):
         return JsonResponse({"error": "Método no permitido."}, status=405)
 
@@ -1987,21 +1989,15 @@ def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
         cols_desp = _columnas_tabla_pg("despacho")
         pk_col = "id_despacho" if "id_despacho" in cols_desp else "id"
         id_usr = _resolver_id_usuario_despacho(request) or 1
-        with connection.cursor() as cursor:
-            cursor.execute("BEGIN;")
-            cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
-            cursor.execute(
-                f"UPDATE despacho SET estado = %s WHERE {pk_col} = %s;",
-                [nuevo_estado, id_despacho],
-            )
-            cursor.execute("COMMIT;")
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
+                cursor.execute(
+                    f"UPDATE despacho SET estado = %s WHERE {pk_col} = %s;",
+                    [nuevo_estado, id_despacho],
+                )
         return JsonResponse({"id_despacho": id_despacho, "estado": nuevo_estado}, status=200)
     except Exception as exc:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("ROLLBACK;")
-        except Exception:
-            pass
         return JsonResponse(
             {"error": f"Error PostgreSQL al actualizar despacho: {exc}"},
             status=500,
