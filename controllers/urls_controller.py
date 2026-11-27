@@ -23,6 +23,7 @@ from views.api_views import (
     api_sincronizar_offline,
     api_solicitudes,
     api_ubicaciones,
+    api_usuario_detalle,
     api_usuarios,
     health_check,
     registrar_avance_obra,
