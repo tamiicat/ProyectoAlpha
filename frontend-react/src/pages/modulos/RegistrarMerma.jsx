@@ -1,15 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const API_BASE_URL = 'https://proyectoalpha.onrender.com/api/v1';
 
 export default function RegistrarMerma() {
     const navigate = useNavigate();
 
-    // Datos de ejemplo alineados a Articulo (luego vendrán de Django: GET /articulos)
-    const [articulos, setArticulos] = useState([
-        { id_articulo: 500, nombre: 'Aire Acondicionado', stock_actual: 45, unidad_de_medida: 'Unidad' },
-        { id_articulo: 501, nombre: 'Cámara de Maduración', stock_actual: 8, unidad_de_medida: 'Unidad' },
-        { id_articulo: 502, nombre: 'Válvula de Presión 3/4', stock_actual: 12, unidad_de_medida: 'Unidad' }
-    ]);
+    const [articulos, setArticulos] = useState([]);
+    const [cargandoArticulos, setCargandoArticulos] = useState(true);
+    const [guardando, setGuardando] = useState(false);
 
     const motivosPredefinidos = [
         'Daño por transporte',
@@ -34,8 +33,66 @@ export default function RegistrarMerma() {
         justificacion: ''
     });
 
+    const obtenerHeadersAuth = () => {
+        const token =
+            localStorage.getItem('token') ||
+            localStorage.getItem('access_token') ||
+            localStorage.getItem('jwt') ||
+            sessionStorage.getItem('token') ||
+            sessionStorage.getItem('access_token') ||
+            '';
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        if (token) {
+            headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+        }
+        return headers;
+    };
+
+    useEffect(() => {
+        let activo = true;
+        const cargarArticulos = async () => {
+            setCargandoArticulos(true);
+            try {
+                const resp = await fetch(`${API_BASE_URL}/inventario/items/`, {
+                    method: 'GET',
+                    headers: obtenerHeadersAuth()
+                });
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}`);
+                }
+                const data = await resp.json();
+                const lista = Array.isArray(data) ? data : (data.items || []);
+                if (activo) {
+                    const normalizados = lista.map((item) => ({
+                        id_articulo: item.id_articulo ?? item.id,
+                        nombre: item.nombre,
+                        stock_actual: Number(item.stock_actual ?? item.stock ?? 0),
+                        unidad_de_medida: item.unidad_de_medida || item.unidad || 'Unidad'
+                    }));
+                    setArticulos(normalizados);
+                }
+            } catch (err) {
+                console.error('Error cargando artículos desde backend:', err);
+                if (activo) {
+                    setArticulos([]);
+                }
+            } finally {
+                if (activo) {
+                    setCargandoArticulos(false);
+                }
+            }
+        };
+
+        cargarArticulos();
+        return () => {
+            activo = false;
+        };
+    }, []);
+
     const articuloSeleccionado = articulos.find(
-        (art) => art.id_articulo === Number(formData.id_articulo)
+        (art) => Number(art.id_articulo) === Number(formData.id_articulo)
     );
 
     const handleChange = (e) => {
@@ -46,7 +103,7 @@ export default function RegistrarMerma() {
         }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (!articuloSeleccionado) {
@@ -77,39 +134,55 @@ export default function RegistrarMerma() {
             return;
         }
 
-        // Payload exacto para enviar a Django (POST /mermas)
-        // id_usuario lo asigna el backend desde la sesión autenticada
         const payload = {
             id_articulo: Number(formData.id_articulo),
+            articulo: articuloSeleccionado.nombre,
             fecha: formData.fecha.replace('T', ' '),
             motivo: motivoFinal,
             cantidad: cantNum,
             justificacion: formData.justificacion.trim()
         };
 
-        // Actualización visual del stock en local
-        setArticulos((prev) =>
-            prev.map((art) =>
-                art.id_articulo === articuloSeleccionado.id_articulo
-                    ? { ...art, stock_actual: art.stock_actual - cantNum }
-                    : art
-            )
-        );
+        setGuardando(true);
+        try {
+            const resp = await fetch(`${API_BASE_URL}/mermas/`, {
+                method: 'POST',
+                headers: obtenerHeadersAuth(),
+                body: JSON.stringify(payload)
+            });
 
-        console.log('Merma lista para enviar al backend:', payload);
-        alert(
-            `Merma registrada correctamente para "${articuloSeleccionado.nombre}" (-${cantNum} ${articuloSeleccionado.unidad_de_medida}).`
-        );
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+                alert(data.error || `No se pudo guardar la merma (HTTP ${resp.status}).`);
+                return;
+            }
 
-        // Limpiar formulario
-        setFormData({
-            id_articulo: '',
-            cantidad: '',
-            motivo: 'Daño por transporte',
-            motivo_otro: '',
-            fecha: obtenerFechaHoraActual(),
-            justificacion: ''
-        });
+            setArticulos((prev) =>
+                prev.map((art) =>
+                    Number(art.id_articulo) === Number(articuloSeleccionado.id_articulo)
+                        ? { ...art, stock_actual: Math.max(0, art.stock_actual - cantNum) }
+                        : art
+                )
+            );
+
+            alert(
+                `Merma registrada correctamente para "${articuloSeleccionado.nombre}" (-${cantNum} ${articuloSeleccionado.unidad_de_medida}).`
+            );
+
+            setFormData({
+                id_articulo: '',
+                cantidad: '',
+                motivo: 'Daño por transporte',
+                motivo_otro: '',
+                fecha: obtenerFechaHoraActual(),
+                justificacion: ''
+            });
+        } catch (err) {
+            console.error('Error al registrar merma:', err);
+            alert('Error de conexión al registrar la merma.');
+        } finally {
+            setGuardando(false);
+        }
     };
 
     return (
@@ -140,9 +213,12 @@ export default function RegistrarMerma() {
                                     required
                                     value={formData.id_articulo}
                                     onChange={handleChange}
+                                    disabled={cargandoArticulos}
                                     className="form-select form-select-lg shadow-sm border-light bg-light text-muted"
                                 >
-                                    <option value="">Seleccione un artículo...</option>
+                                    <option value="">
+                                        {cargandoArticulos ? 'Cargando artículos...' : 'Seleccione un artículo...'}
+                                    </option>
                                     {articulos.map((art) => (
                                         <option key={art.id_articulo} value={art.id_articulo}>
                                             {art.nombre} (ID: {art.id_articulo} — Stock: {art.stock_actual})
@@ -240,10 +316,11 @@ export default function RegistrarMerma() {
                         <div className="d-flex justify-content-end mt-5">
                             <button
                                 type="submit"
+                                disabled={guardando}
                                 className="btn px-5 py-3 fw-bold text-white shadow-sm"
                                 style={{ backgroundColor: '#2b3d52', borderRadius: '12px' }}
                             >
-                                Guardar Merma
+                                {guardando ? 'Guardando...' : 'Guardar Merma'}
                             </button>
                         </div>
                     </form>
