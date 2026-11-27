@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authFetch } from '../../services/api';
+
+const CLAVE_CORREO_RECORDADO = 'correoRecordadoFYAG';
 
 export default function Login() {
     const navigate = useNavigate();
@@ -13,6 +15,22 @@ export default function Login() {
     const [mostrarContrasena, setMostrarContrasena] = useState(false);
     const [error, setError] = useState('');
     const [cargando, setCargando] = useState(false);
+
+    // Cargar solo el correo/usuario recordado al montar (nunca sesión ni token)
+    useEffect(() => {
+        try {
+            const correoGuardado = localStorage.getItem(CLAVE_CORREO_RECORDADO);
+            if (correoGuardado) {
+                setFormData((prev) => ({
+                    ...prev,
+                    usuario: correoGuardado,
+                    recuerdame: true
+                }));
+            }
+        } catch {
+            // Ignorar si localStorage no está disponible
+        }
+    }, []);
 
     // Extrae el payload del JWT (user_id, role, etc.) sin librerías externas
     const decodificarJWT = (token) => {
@@ -56,18 +74,37 @@ export default function Login() {
         return '/admin';
     };
 
-    const guardarSesionYEntrar = (sesion, rutaDestino) => {
+    const guardarSesionYEntrar = (sesion, usuarioLimpio, rutaDestino) => {
+        // Nunca persistir tokens o sesión completa en localStorage; solo el correo si marcó "Recuérdame"
         localStorage.removeItem('usuarioFYAG');
         sessionStorage.removeItem('usuarioFYAG');
 
-        const storage = formData.recuerdame ? localStorage : sessionStorage;
-        storage.setItem('usuarioFYAG', JSON.stringify(sesion));
+        try {
+            if (formData.recuerdame && usuarioLimpio) {
+                localStorage.setItem(CLAVE_CORREO_RECORDADO, usuarioLimpio);
+            } else {
+                localStorage.removeItem(CLAVE_CORREO_RECORDADO);
+            }
+        } catch {
+            // Ignorar errores de storage
+        }
+
+        sessionStorage.setItem('usuarioFYAG', JSON.stringify(sesion));
 
         navigate(rutaDestino || obtenerRutaPorRol(sesion.rol));
     };
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
+
+        if (name === 'recuerdame' && !checked) {
+            try {
+                localStorage.removeItem(CLAVE_CORREO_RECORDADO);
+            } catch {
+                // Ignorar errores de storage
+            }
+        }
+
         setFormData((prev) => ({
             ...prev,
             [name]: type === 'checkbox' ? checked : value
@@ -112,7 +149,7 @@ export default function Login() {
                 refresh_token: data.refresh_token ?? null
             };
 
-            guardarSesionYEntrar(sesionBackend, obtenerRutaPorRol(rolCrudo));
+            guardarSesionYEntrar(sesionBackend, usuarioLimpio, obtenerRutaPorRol(rolCrudo));
         } catch (err) {
             setError(err.message || 'No se pudo iniciar sesión con el servicio de autenticación.');
         } finally {
