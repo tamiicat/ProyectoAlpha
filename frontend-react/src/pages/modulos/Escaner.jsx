@@ -7,6 +7,9 @@ export default function Escaner() {
     const navigate = useNavigate();
     const inputRef = useRef(null);
     const scannerRef = useRef(null);
+    const timerCamaraRef = useRef(null);
+    const montadoRef = useRef(true);
+    const operandoCamaraRef = useRef(false);
 
     const [codigoInput, setCodigoInput] = useState('');
     const [articuloDetectado, setArticuloDetectado] = useState(null);
@@ -26,14 +29,48 @@ export default function Escaner() {
     const [tipoMovimiento, setTipoMovimiento] = useState('ingreso');
     const [cantidad, setCantidad] = useState(1);
 
-    // Limpiar cámara al desmontar el componente
-    useEffect(() => {
-        return () => {
-            if (scannerRef.current) {
-                scannerRef.current.stop().catch(() => {});
-                scannerRef.current = null;
+    const detenerCamara = async () => {
+        if (timerCamaraRef.current) {
+            clearTimeout(timerCamaraRef.current);
+            timerCamaraRef.current = null;
+        }
+
+        if (operandoCamaraRef.current) return;
+        operandoCamaraRef.current = true;
+
+        const instancia = scannerRef.current;
+        scannerRef.current = null;
+
+        try {
+            if (instancia) {
+                try {
+                    if (instancia.isScanning) {
+                        await instancia.stop();
+                    }
+                } catch {
+                    // Ignorar si ya estaba detenida o no llegó a iniciar
+                }
+                try {
+                    await instancia.clear();
+                } catch {
+                    // Ignorar si el nodo ya no existe en el DOM
+                }
             }
+        } finally {
+            operandoCamaraRef.current = false;
+            if (montadoRef.current) {
+                setCamaraActiva(false);
+            }
+        }
+    };
+
+    useEffect(() => {
+        montadoRef.current = true;
+        return () => {
+            montadoRef.current = false;
+            detenerCamara();
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const normalizarArticulo = (item) => ({
@@ -50,24 +87,22 @@ export default function Escaner() {
         activo: item.activo !== undefined ? Boolean(item.activo) : true
     });
 
-    const detenerCamara = async () => {
-        if (scannerRef.current) {
-            try {
-                await scannerRef.current.stop();
-            } catch {
-                // Ignorar si ya estaba detenida
-            }
-            scannerRef.current = null;
-        }
-        setCamaraActiva(false);
-    };
-
     const iniciarCamara = async () => {
+        if (operandoCamaraRef.current || camaraActiva) return;
         setErrorCamara('');
         setCamaraActiva(true);
 
-        // Esperar a que el contenedor exista en el DOM
-        setTimeout(async () => {
+        timerCamaraRef.current = setTimeout(async () => {
+            timerCamaraRef.current = null;
+            if (!montadoRef.current) return;
+
+            const contenedor = document.getElementById('lector-camara-fyag');
+            if (!contenedor) {
+                if (montadoRef.current) setCamaraActiva(false);
+                return;
+            }
+
+            operandoCamaraRef.current = true;
             try {
                 const html5QrCode = new Html5Qrcode('lector-camara-fyag');
                 scannerRef.current = html5QrCode;
@@ -76,18 +111,27 @@ export default function Escaner() {
                     { facingMode: 'environment' },
                     { fps: 10, qrbox: { width: 260, height: 140 } },
                     async (decodedText) => {
+                        const textoLimpio = String(decodedText || '').slice(0, 20);
+                        operandoCamaraRef.current = false;
                         await detenerCamara();
-                        buscarPorCodigo(decodedText.slice(0, 20));
+                        if (montadoRef.current) {
+                            buscarPorCodigo(textoLimpio);
+                        }
                     },
                     () => {
                         // Errores por frame sin código se ignoran
                     }
                 );
-            } catch (err) {
-                setCamaraActiva(false);
-                setErrorCamara(
-                    'No se pudo iniciar la cámara. Verifica los permisos del navegador o usa el lector manual / USB.'
-                );
+            } catch {
+                scannerRef.current = null;
+                if (montadoRef.current) {
+                    setCamaraActiva(false);
+                    setErrorCamara(
+                        'No se pudo iniciar la cámara o se denegó el permiso. Puedes usar el lector USB o escribir el código manualmente.'
+                    );
+                }
+            } finally {
+                operandoCamaraRef.current = false;
             }
         }, 150);
     };
@@ -106,6 +150,8 @@ export default function Escaner() {
         setBuscando(true);
         try {
             const data = await apiFetch(`/inventario/items/?codigo_de_barras=${encodeURIComponent(limpio)}`);
+            if (!montadoRef.current) return;
+
             const lista = Array.isArray(data)
                 ? data
                 : (data.items || data.articulos || data.results || []);
@@ -141,11 +187,14 @@ export default function Escaner() {
                 setNoEncontrado(true);
             }
         } catch (err) {
+            if (!montadoRef.current) return;
             setArticuloDetectado(null);
             setNoEncontrado(false);
             setErrorConsulta(err?.message || 'No se pudo consultar el artículo en el servidor.');
         } finally {
-            setBuscando(false);
+            if (montadoRef.current) {
+                setBuscando(false);
+            }
         }
     };
 
@@ -191,6 +240,7 @@ export default function Escaner() {
                 method: 'POST',
                 body: JSON.stringify(payloadCardex)
             });
+            if (!montadoRef.current) return;
 
             setArticuloDetectado((prev) => ({
                 ...prev,
@@ -208,19 +258,30 @@ export default function Escaner() {
                 `${tipoMovimiento === 'ingreso' ? 'Ingreso' : 'Salida'} confirmado en el servidor. Nuevo stock de "${articuloDetectado.nombre}": ${nuevoStock} ${articuloDetectado.unidad_de_medida}.`
             );
         } catch (err) {
+            if (!montadoRef.current) return;
             alert(`No se pudo registrar el movimiento: ${err?.message || 'Error en el servidor.'}`);
         } finally {
-            setConfirmando(false);
+            if (montadoRef.current) {
+                setConfirmando(false);
+            }
         }
     };
 
-    const handleRechazar = () => {
+    const handleRechazar = async () => {
+        await detenerCamara();
+        if (!montadoRef.current) return;
         setCodigoInput('');
         setArticuloDetectado(null);
         setNoEncontrado(false);
         setErrorConsulta('');
+        setErrorCamara('');
         setCantidad(1);
         inputRef.current?.focus();
+    };
+
+    const handleVolver = async () => {
+        await detenerCamara();
+        navigate(-1);
     };
 
     return (
@@ -236,7 +297,7 @@ export default function Escaner() {
                         </div>
                     </div>
                     <div>
-                        <button type="button" onClick={() => navigate(-1)} className="btn btn-outline-light rounded-pill px-4 fw-semibold">
+                        <button type="button" onClick={handleVolver} className="btn btn-outline-light rounded-pill px-4 fw-semibold">
                             Volver al menú
                         </button>
                     </div>
@@ -320,7 +381,10 @@ export default function Escaner() {
                                     <div className="d-flex gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => navigate('/gestionar-inventario')}
+                                            onClick={async () => {
+                                                await detenerCamara();
+                                                navigate('/gestionar-inventario');
+                                            }}
                                             className="btn btn-sm text-white fw-semibold"
                                             style={{ backgroundColor: '#2b3d52' }}
                                         >
