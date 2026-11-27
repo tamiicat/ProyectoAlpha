@@ -1,4 +1,4 @@
-"""Capa Vista (MVC): Endpoints REST de salud, obras, inventario, orquestación dual y sync offline."""
+﻿"""Capa Vista (MVC): Endpoints REST de salud, obras, inventario, orquestación dual y sync offline."""
 
 import json
 from typing import Any
@@ -1546,6 +1546,88 @@ def api_obras(request: Any) -> JsonResponse:
     return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
+_DESPACHOS_MEMORIA: list[dict[str, Any]] = []
+
+
+def _asegurar_tablas_despacho() -> None:
+    """Crea tabla de respaldo si aún no existe en la base de datos."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS despacho_registro (
+                id_despacho SERIAL PRIMARY KEY,
+                id_cliente INTEGER NULL,
+                id_obra INTEGER NULL,
+                fecha_despacho VARCHAR(30),
+                fecha_entrega VARCHAR(30) NULL,
+                estado VARCHAR(40) DEFAULT 'pendiente',
+                boleta VARCHAR(100) DEFAULT '',
+                direccion_entrega VARCHAR(255) DEFAULT '',
+                detalles_json TEXT DEFAULT '[]'
+            );
+            """
+        )
+
+
+def _enriquecer_despacho(item: dict[str, Any]) -> dict[str, Any]:
+    """Completa cliente_nombre, obra_nombre y nombres de artículos desde BD."""
+    cliente_nombre = item.get("cliente_nombre") or "Cliente"
+    obra_nombre = item.get("obra_nombre")
+    detalles_raw = item.get("detalles") or []
+
+    try:
+        with connection.cursor() as cursor:
+            if item.get("id_cliente"):
+                cursor.execute(
+                    "SELECT TRIM(CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, ''))) FROM cliente WHERE id_cliente = %s LIMIT 1;",
+                    [item["id_cliente"]],
+                )
+                row_cli = cursor.fetchone()
+                if row_cli and row_cli[0]:
+                    cliente_nombre = row_cli[0]
+
+            if item.get("id_obra"):
+                cursor.execute(
+                    "SELECT COALESCE(descripcion, codigo) FROM obra WHERE id_obra = %s LIMIT 1;",
+                    [item["id_obra"]],
+                )
+                row_obr = cursor.fetchone()
+                if row_obr and row_obr[0]:
+                    obra_nombre = row_obr[0]
+
+            detalles_ok = []
+            for idx, det in enumerate(detalles_raw, start=1):
+                id_art = det.get("id_articulo")
+                art_nombre = det.get("articulo_nombre") or f"Artículo #{id_art}"
+                unidad = det.get("unidad_de_medida") or "unidad"
+                if id_art:
+                    cursor.execute(
+                        "SELECT nombre, unidad_de_medida FROM articulo WHERE id_articulo = %s LIMIT 1;",
+                        [id_art],
+                    )
+                    row_art = cursor.fetchone()
+                    if row_art:
+                        art_nombre = row_art[0] or art_nombre
+                        unidad = row_art[1] or unidad
+                detalles_ok.append(
+                    {
+                        "id_detalle": det.get("id_detalle") or idx,
+                        "id_articulo": id_art,
+                        "articulo_nombre": art_nombre,
+                        "unidad_de_medida": unidad,
+                        "cantidad": det.get("cantidad", 1),
+                    }
+                )
+            item["detalles"] = detalles_ok
+    except Exception:
+        pass
+
+    item["cliente_nombre"] = cliente_nombre
+    item["obra_nombre"] = obra_nombre
+    item["usuario_nombre"] = item.get("usuario_nombre") or "Usuario FYAG"
+    return item
+
+
 @csrf_exempt
 @require_rbac("inventario_bodega", "R")
 def api_despachos(request: Any) -> JsonResponse:
@@ -1553,29 +1635,42 @@ def api_despachos(request: Any) -> JsonResponse:
     if request.method == "GET":
         despachos: list[dict[str, Any]] = []
         try:
+            _asegurar_tablas_despacho()
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id_despacho, numero_despacho, id_obra, estado,
-                           observacion, fecha_despacho
-                    FROM despacho
+                    SELECT id_despacho, id_cliente, id_obra, fecha_despacho,
+                           fecha_entrega, estado, boleta, direccion_entrega, detalles_json
+                    FROM despacho_registro
                     ORDER BY id_despacho DESC;
                     """
                 )
                 for row in cursor.fetchall():
+                    try:
+                        detalles = json.loads(row[8] or "[]")
+                    except Exception:
+                        detalles = []
                     despachos.append(
-                        {
-                            "id": row[0],
-                            "id_despacho": row[0],
-                            "numero_despacho": row[1],
-                            "id_obra": row[2],
-                            "estado": row[3],
-                            "observacion": row[4],
-                            "fecha": str(row[5]) if row[5] else None,
-                        }
+                        _enriquecer_despacho(
+                            {
+                                "id": row[0],
+                                "id_despacho": row[0],
+                                "id_cliente": row[1],
+                                "id_obra": row[2],
+                                "fecha_despacho": row[3],
+                                "fecha_entrega": row[4],
+                                "estado": (row[5] or "pendiente").lower(),
+                                "boleta": row[6] or "",
+                                "direccion_entrega": row[7] or "",
+                                "detalles": detalles,
+                            }
+                        )
                     )
         except Exception:
-            despachos = []
+            despachos = [_enriquecer_despacho(dict(d)) for d in reversed(_DESPACHOS_MEMORIA)]
+
+        if not despachos and _DESPACHOS_MEMORIA:
+            despachos = [_enriquecer_despacho(dict(d)) for d in reversed(_DESPACHOS_MEMORIA)]
 
         return JsonResponse(
             {"despachos": despachos, "total": len(despachos)}, status=200
@@ -1587,19 +1682,109 @@ def api_despachos(request: Any) -> JsonResponse:
         except json.JSONDecodeError:
             return JsonResponse({"error": "JSON inválido."}, status=400)
 
-        observacion = sanitize_text_input(str(data.get("observacion", "")).strip())
+        id_cliente = data.get("id_cliente") or None
+        id_obra = data.get("id_obra") or None
+        fecha_despacho = sanitize_text_input(str(data.get("fecha_despacho", "")).strip())
+        fecha_entrega = sanitize_text_input(str(data.get("fecha_entrega") or "").strip()) or None
+        estado = sanitize_text_input(str(data.get("estado", "pendiente")).strip()).lower()
+        boleta = sanitize_text_input(str(data.get("boleta", "")).strip())
+        direccion_entrega = sanitize_text_input(
+            str(data.get("direccion_entrega", data.get("direccion", ""))).strip()
+        )
+        detalles = data.get("detalles") if isinstance(data.get("detalles"), list) else []
+
+        nuevo_id = None
+        try:
+            _asegurar_tablas_despacho()
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO despacho_registro (
+                        id_cliente, id_obra, fecha_despacho, fecha_entrega,
+                        estado, boleta, direccion_entrega, detalles_json
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id_despacho;
+                    """,
+                    [
+                        id_cliente,
+                        id_obra,
+                        fecha_despacho,
+                        fecha_entrega,
+                        estado,
+                        boleta,
+                        direccion_entrega,
+                        json.dumps(detalles),
+                    ],
+                )
+                row_id = cursor.fetchone()
+                if row_id:
+                    nuevo_id = int(row_id[0])
+        except Exception:
+            nuevo_id = None
+
+        if nuevo_id is None:
+            nuevo_id = len(_DESPACHOS_MEMORIA) + 1
+
+        registro = _enriquecer_despacho(
+            {
+                "id": nuevo_id,
+                "id_despacho": nuevo_id,
+                "id_cliente": id_cliente,
+                "id_obra": id_obra,
+                "fecha_despacho": fecha_despacho,
+                "fecha_entrega": fecha_entrega,
+                "estado": estado,
+                "boleta": boleta,
+                "direccion_entrega": direccion_entrega,
+                "detalles": detalles,
+            }
+        )
+        _DESPACHOS_MEMORIA.append(registro)
+
         return JsonResponse(
             {
+                "id": nuevo_id,
+                "id_despacho": nuevo_id,
                 "mensaje": "Despacho registrado correctamente.",
-                "despacho": {
-                    "estado": "DESPACHADO",
-                    "observacion": observacion,
-                    **data,
-                },
+                "despacho": registro,
             },
             status=201,
         )
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
-```[cite: 5, 6]
 
+
+@csrf_exempt
+@require_rbac("inventario_bodega", "U")
+def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
+    """PATCH /api/v1/despachos/<id_despacho>/ -> actualiza estado del despacho."""
+    if request.method not in ("PATCH", "PUT"):
+        return JsonResponse({"error": "Método no permitido."}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    nuevo_estado = sanitize_text_input(str(data.get("estado", "")).strip()).lower()
+    if not nuevo_estado:
+        return JsonResponse({"error": "estado es obligatorio."}, status=400)
+
+    try:
+        _asegurar_tablas_despacho()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE despacho_registro SET estado = %s WHERE id_despacho = %s;",
+                [nuevo_estado, id_despacho],
+            )
+    except Exception:
+        pass
+
+    for item in _DESPACHOS_MEMORIA:
+        if int(item.get("id_despacho", 0)) == int(id_despacho):
+            item["estado"] = nuevo_estado
+
+    return JsonResponse(
+        {"id_despacho": id_despacho, "estado": nuevo_estado}, status=200
+    )

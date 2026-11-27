@@ -1,4 +1,4 @@
-"""Capa Controlador (MVC): Enrutamiento central de URLs."""
+﻿"""Capa Controlador (MVC): Enrutamiento central de URLs."""
 
 from django.contrib import admin
 from django.urls import path
@@ -10,6 +10,7 @@ from views.api_views import (
     api_categorias,
     api_clientes,
     api_crear_inventario,
+    api_despacho_detalle,
     api_despachos,
     api_facturas,
     api_health,
@@ -32,7 +33,8 @@ urlpatterns = [
     path("api/v1/inventario/health/", api_health, name="inventario_health"),
     path("api/v1/obras/", api_obras, name="api_obras"),
     path("api/v1/obras/avance/", registrar_avance_obra, name="obra_avance"),
-    path("api/v1/despachos/", api_despachos, name="api_despachos"),
+    path("api/v1/despachos/", api_despacho_detalle,
+    api_despachos, name="api_despachos"),
     path("api/v1/inventario/items/", api_listar_inventario, name="inventario_listar"),
     path("api/v1/inventario/items/crear/", api_crear_inventario, name="inventario_crear"),
     path("api/v1/inventario/search/", api_buscar_inventario, name="inventario_search"),
