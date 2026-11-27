@@ -2048,7 +2048,7 @@ def api_despachos(request: Any) -> JsonResponse:
 
 @csrf_exempt
 def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
-    """PUT/PATCH/DELETE /api/v1/usuarios/<id_usuario>/ -> actualiza o desactiva usuario."""
+    """PUT/PATCH/DELETE /api/v1/usuarios/<id_usuario>/ -> actualiza o elimina usuario."""
     from django.db import transaction
 
     role = getattr(request, "jwt_role", None)
@@ -2058,16 +2058,63 @@ def api_usuario_detalle(request: Any, id_usuario: int) -> JsonResponse:
     id_usr = _resolver_id_usuario_despacho(request) or 1
 
     if request.method in ("PUT", "PATCH"):
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        solo_desactivar = (
+            "activo" in data
+            and data.get("activo") is False
+            and not any(
+                k in data
+                for k in (
+                    "nombres",
+                    "nombre",
+                    "apellidos",
+                    "rut",
+                    "correo_electronico",
+                    "email",
+                    "correo",
+                    "telefono",
+                    "username",
+                    "usuario",
+                    "rol",
+                    "role",
+                )
+            )
+        )
+
+        if solo_desactivar:
+            if "D" not in RBAC_MATRIX.get(role, {}).get("usuarios_roles", set()):
+                return JsonResponse(
+                    {"error": f"Acceso denegado para rol '{role}' en módulo 'usuarios_roles' (D)."},
+                    status=403,
+                )
+
+            try:
+                with transaction.atomic():
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
+                        cursor.execute(
+                            "DELETE FROM usuario WHERE id_usuario = %s;",
+                            [id_usuario],
+                        )
+                        if cursor.rowcount == 0:
+                            return JsonResponse({"error": "Usuario no encontrado."}, status=404)
+            except Exception as exc:
+                return JsonResponse({"error": f"Error al eliminar usuario: {exc}"}, status=500)
+
+            return JsonResponse(
+                {"id_usuario": id_usuario, "eliminado": True, "mensaje": "Usuario eliminado."},
+                status=200,
+            )
+
         if "U" not in RBAC_MATRIX.get(role, {}).get("usuarios_roles", set()):
             return JsonResponse(
                 {"error": f"Acceso denegado para rol '{role}' en módulo 'usuarios_roles' (U)."},
                 status=403,
             )
-
-        try:
-            data = json.loads(request.body.decode("utf-8") or "{}")
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "JSON inválido."}, status=400)
 
         campos_sql: list[str] = []
         valores_sql: list[Any] = []
