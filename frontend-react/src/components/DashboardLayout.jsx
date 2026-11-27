@@ -22,6 +22,7 @@ const CONFIG_ROLES = {
         items: [
           { label: 'Ver Inventario', ruta: '/inventario', icono: 'bi-box-seam' },
           { label: 'Añadir Artículo', ruta: '/gestionar-inventario', icono: 'bi-plus-square' },
+          { label: 'Categorías y Bodegas', ruta: '/gestion-catalogos', icono: 'bi-tags' },
           { label: 'Cardex', ruta: '/cardex', icono: 'bi-journal-text' },
           { label: 'Escáner', ruta: '/escaner', icono: 'bi-upc-scan' },
           { label: 'Registrar Merma', ruta: '/registrar-merma', icono: 'bi-exclamation-diamond' },
@@ -62,6 +63,7 @@ const CONFIG_ROLES = {
         items: [
           { label: 'Ver Inventario', ruta: '/inventario', icono: 'bi-box-seam' },
           { label: 'Añadir Artículo', ruta: '/gestionar-inventario', icono: 'bi-plus-square' },
+          { label: 'Categorías y Bodegas', ruta: '/gestion-catalogos', icono: 'bi-tags' },
           { label: 'Cardex', ruta: '/cardex', icono: 'bi-journal-text' },
           { label: 'Recepción de Compra', ruta: '/recepcion', icono: 'bi-box-arrow-in-down' },
           { label: 'Módulo de Despacho', ruta: '/despacho', icono: 'bi-truck' },

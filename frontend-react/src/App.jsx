@@ -24,6 +24,7 @@ import ModuloCompras from './pages/modulos/ModuloCompras';
 import GestionClientes from './pages/modulos/GestionClientes';
 import Autorizaciones from './pages/modulos/Autorizaciones';
 import Accesibilidad from './components/Accesibilidad';
+import GestionCatalogos from './pages/modulos/GestionCatalogos';
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/cardex" element={<Cardex />} />
           <Route path="/crear-cuenta" element={<CrearCuenta />} />
           <Route path="/gestionar-inventario" element={<GestionarInventario />} />
+          <Route path="/gestion-catalogos" element={<GestionCatalogos />} />
           <Route path="/recepcion" element={<Recepcion />} />
           <Route path="/despacho" element={<Despacho />} />
           <Route path="/registrar-merma" element={<RegistrarMerma />} />
