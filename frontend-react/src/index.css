@@ -193,6 +193,22 @@ body {
 /* Sincroniza los headers de los módulos con el color del rol activo */
 .fyag-main-content .shadow-lg > div:first-child {
   background-color: var(--fyag-navy) !important;
+  justify-content: space-between !important;
+}
+
+/* Oculta el botón redundante "Volver al menú" dentro de los módulos (ya existe Sidebar y barra Inicio móvil) */
+.fyag-main-content .shadow-lg > div:first-child .btn-outline-light {
+  display: none !important;
+}
+
+/* Si el contenedor derecho solo tenía "Volver al menú", también se oculta para no dejar espacio vacío en móvil */
+.fyag-main-content .shadow-lg > div:first-child > div:last-child:has(> .btn-outline-light:only-child) {
+  display: none !important;
+}
+
+/* Asegura que los botones propios del módulo (Nueva Factura, Imprimir, etc.) no se estiren */
+.fyag-main-content .shadow-lg > div:first-child > div:last-child {
+  flex-shrink: 0;
 }
 
 /* =========================================================
