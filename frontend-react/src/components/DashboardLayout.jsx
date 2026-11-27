@@ -287,7 +287,7 @@ export default function DashboardLayout() {
 
       {/* ÁREA DE CONTENIDO DEL MÓDULO */}
       <div className="flex-grow-1 d-flex flex-column" style={{ minWidth: 0 }}>
-        {/* Barra móvil para abrir menú en pantallas pequeñas */}
+        {/* Barra móvil para abrir menú o volver al Dashboard en pantallas pequeñas */}
         <div
           className="bg-white border-bottom px-3 py-2 d-flex d-lg-none align-items-center justify-content-between"
           style={{ borderTop: `4px solid ${tema.colorAcento}` }}
@@ -299,9 +299,18 @@ export default function DashboardLayout() {
           >
             <i className="bi bi-list fs-5"></i> Menú
           </button>
-          <span className="fw-bold small" style={{ color: tema.colorPrimario }}>
+          <span className="fw-bold small text-truncate mx-2" style={{ color: tema.colorPrimario }}>
             {tema.titulo}
           </span>
+          <Link
+            to={tema.rutaInicio}
+            className="btn btn-sm rounded-pill px-3 text-white fw-semibold d-flex align-items-center gap-1"
+            style={{ backgroundColor: tema.colorPrimario }}
+            title="Ir al Dashboard"
+          >
+            <i className="bi bi-house-door"></i>
+            <span>Inicio</span>
+          </Link>
         </div>
 
         <main className="p-3 p-md-4 flex-grow-1 fyag-main-content">
