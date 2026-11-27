@@ -463,6 +463,161 @@ def api_proveedores(request: Any) -> JsonResponse:
 
 
 @csrf_exempt
+def api_clientes(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/clientes/ -> lista o registra clientes."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    if request.method == "GET":
+        modulo_ok = (
+            "R" in RBAC_MATRIX.get(role, {}).get("obras_mantencion", set())
+            or "R" in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set())
+        )
+        if not modulo_ok:
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en clientes (R)."},
+                status=403,
+            )
+
+        q = sanitize_text_input(str(request.GET.get("q", "")).strip()).lower()
+        clientes: list[dict[str, Any]] = []
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        id_cliente,
+                        nombre_razon_social,
+                        rut,
+                        correo_electronico,
+                        telefono,
+                        direccion,
+                        activo
+                    FROM cliente
+                    ORDER BY id_cliente ASC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    activo_bool = bool(row[6]) if row[6] is not None else True
+                    item = {
+                        "id": row[0],
+                        "id_cliente": row[0],
+                        "nombre_razon_social": row[1] or "",
+                        "razon_social": row[1] or "",
+                        "nombre": row[1] or "",
+                        "rut": row[2] or "",
+                        "correo_electronico": row[3] or "",
+                        "correo": row[3] or "",
+                        "email": row[3] or "",
+                        "telefono": row[4] or "",
+                        "direccion": row[5] or "",
+                        "activo": activo_bool,
+                        "estado": "Activo" if activo_bool else "Inactivo",
+                    }
+                    if not q or any(
+                        q in str(item[campo]).lower()
+                        for campo in (
+                            "nombre_razon_social",
+                            "rut",
+                            "correo_electronico",
+                            "telefono",
+                            "direccion",
+                        )
+                    ):
+                        clientes.append(item)
+        except Exception:
+            clientes = []
+
+        return JsonResponse(
+            {"clientes": clientes, "total": len(clientes)}, status=200
+        )
+
+    if request.method == "POST":
+        modulo_ok = (
+            "C" in RBAC_MATRIX.get(role, {}).get("obras_mantencion", set())
+            or "C" in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set())
+        )
+        if not modulo_ok:
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en clientes (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        nombre_razon_social = sanitize_text_input(
+            str(
+                data.get(
+                    "nombre_razon_social",
+                    data.get("razon_social", data.get("nombre", "")),
+                )
+            ).strip()
+        )
+        rut = sanitize_text_input(str(data.get("rut", "")).strip())
+        correo = sanitize_text_input(
+            str(
+                data.get("correo_electronico", data.get("correo", data.get("email", "")))
+            ).strip()
+        )
+        telefono = sanitize_text_input(str(data.get("telefono", "")).strip())
+        direccion = sanitize_text_input(str(data.get("direccion", "")).strip())
+
+        if not nombre_razon_social or not rut:
+            return JsonResponse(
+                {"error": "Nombre/Razón social y RUT son obligatorios."}, status=400
+            )
+
+        id_cliente_bd = None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO cliente (
+                        nombre_razon_social, rut, correo_electronico, telefono, direccion, activo
+                    )
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                    RETURNING id_cliente;
+                    """,
+                    [
+                        nombre_razon_social[:150],
+                        rut[:20],
+                        correo[:120],
+                        telefono[:30],
+                        direccion[:200],
+                    ],
+                )
+                id_cliente_bd = int(cursor.fetchone()[0])
+        except Exception:
+            id_cliente_bd = None
+
+        nuevo_cliente = {
+            "id": id_cliente_bd,
+            "id_cliente": id_cliente_bd,
+            "nombre_razon_social": nombre_razon_social,
+            "razon_social": nombre_razon_social,
+            "nombre": nombre_razon_social,
+            "rut": rut,
+            "correo_electronico": correo,
+            "correo": correo,
+            "telefono": telefono,
+            "direccion": direccion,
+            "activo": True,
+            "estado": "Activo",
+        }
+        return JsonResponse(
+            {"cliente": nuevo_cliente, "mensaje": "Cliente registrado correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
+
+@csrf_exempt
 @require_rbac("inventario_bodega", "C")
 def api_orquestar_movimiento(request: Any) -> JsonResponse:
     """POST /api/v1/movimientos/orquestar/ -> actualiza stock, cardex y telemetría."""
