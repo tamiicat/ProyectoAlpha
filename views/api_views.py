@@ -1216,3 +1216,101 @@ def api_solicitudes(request: Any) -> JsonResponse:
         return JsonResponse(resultado, status=status_code)
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
+
+@csrf_exempt
+@require_rbac("obras_mantencion", "R")
+def api_obras(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/obras/ -> lista o registra obras en tabla 'obra'."""
+    if request.method == "GET":
+        obras: list[dict[str, Any]] = []
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id_obra, codigo, descripcion, tipo_obra,
+                           porcentaje_avance, estado, observacion
+                    FROM obra
+                    ORDER BY id_obra DESC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    obras.append(
+                        {
+                            "id": row[0],
+                            "id_obra": row[0],
+                            "codigo": row[1],
+                            "codigo_obra": row[1],
+                            "nombre": row[2] or row[1],
+                            "descripcion": row[2],
+                            "tipo": row[3],
+                            "porcentaje_avance": row[4],
+                            "estado": row[5],
+                            "observacion": row[6],
+                        }
+                    )
+        except Exception:
+            obras = []
+
+        return JsonResponse({"obras": obras, "total": len(obras)}, status=200)
+
+    if request.method == "POST":
+        return registrar_avance_obra(request)
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
+
+@csrf_exempt
+@require_rbac("inventario_bodega", "R")
+def api_despachos(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/despachos/ -> lista o registra despachos de bodega."""
+    if request.method == "GET":
+        despachos: list[dict[str, Any]] = []
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id_despacho, numero_despacho, id_obra, estado,
+                           observacion, fecha_despacho
+                    FROM despacho
+                    ORDER BY id_despacho DESC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    despachos.append(
+                        {
+                            "id": row[0],
+                            "id_despacho": row[0],
+                            "numero_despacho": row[1],
+                            "id_obra": row[2],
+                            "estado": row[3],
+                            "observacion": row[4],
+                            "fecha": str(row[5]) if row[5] else None,
+                        }
+                    )
+        except Exception:
+            despachos = []
+
+        return JsonResponse(
+            {"despachos": despachos, "total": len(despachos)}, status=200
+        )
+
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        observacion = sanitize_text_input(str(data.get("observacion", "")).strip())
+        return JsonResponse(
+            {
+                "mensaje": "Despacho registrado correctamente.",
+                "despacho": {
+                    "estado": "DESPACHADO",
+                    "observacion": observacion,
+                    **data,
+                },
+            },
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
