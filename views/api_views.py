@@ -646,6 +646,107 @@ def api_clientes(request: Any) -> JsonResponse:
 
 
 @csrf_exempt
+def api_autorizaciones(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/autorizaciones/ -> consulta o gestiona autorizaciones."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
+
+    if request.method == "GET":
+        modulo_ok = (
+            "R" in RBAC_MATRIX.get(role, {}).get("usuarios_roles", set())
+            or "R" in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set())
+            or "R" in RBAC_MATRIX.get(role, {}).get("obras_mantencion", set())
+        )
+        if not modulo_ok:
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en autorizaciones (R)."},
+                status=403,
+            )
+
+        q = sanitize_text_input(str(request.GET.get("q", "")).strip()).lower()
+        estado_filtro = sanitize_text_input(str(request.GET.get("estado", "")).strip()).lower()
+        autorizaciones: list[dict[str, Any]] = []
+
+        for tabla in ("autorizacion", "solicitud_autorizacion"):
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(f"SELECT * FROM {tabla} LIMIT 1;")
+                    cols = [col[0] for col in cursor.description] if cursor.description else []
+                    cursor.execute(f"SELECT * FROM {tabla} ORDER BY 1 DESC;")
+                    for row in cursor.fetchall():
+                        rec = dict(zip(cols, row))
+                        id_val = rec.get("id_autorizacion") or rec.get("id")
+                        solicitante = (
+                            rec.get("solicitante")
+                            or rec.get("usuario")
+                            or rec.get("id_usuario")
+                            or "Sistema"
+                        )
+                        modulo_reg = (
+                            rec.get("modulo")
+                            or rec.get("registro")
+                            or rec.get("tabla")
+                            or "General"
+                        )
+                        accion = rec.get("accion") or rec.get("tipo_accion") or "MODIFICACION"
+                        motivo = rec.get("motivo") or rec.get("observacion") or ""
+                        fecha_raw = rec.get("fecha_solicitud") or rec.get("fecha") or ""
+                        fecha_str = (
+                            fecha_raw.isoformat()
+                            if hasattr(fecha_raw, "isoformat")
+                            else str(fecha_raw or "")
+                        )
+                        estado_val = rec.get("estado") or "PENDIENTE"
+                        item = {
+                            "id": id_val,
+                            "id_autorizacion": id_val,
+                            "solicitante": str(solicitante),
+                            "modulo": str(modulo_reg),
+                            "registro": str(modulo_reg),
+                            "accion": str(accion),
+                            "motivo": str(motivo),
+                            "fecha_solicitud": fecha_str,
+                            "fecha": fecha_str,
+                            "estado": str(estado_val),
+                        }
+                        if estado_filtro and estado_filtro not in ("todos", "todos los estados"):
+                            if estado_filtro not in item["estado"].lower():
+                                continue
+                        if not q or any(
+                            q in str(item[campo]).lower()
+                            for campo in ("id", "solicitante", "modulo", "accion", "motivo", "estado")
+                        ):
+                            autorizaciones.append(item)
+                break
+            except Exception:
+                continue
+
+        return JsonResponse(
+            {"autorizaciones": autorizaciones, "total": len(autorizaciones)}, status=200
+        )
+
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        estado_nuevo = sanitize_text_input(
+            str(data.get("estado", data.get("accion", "APROBADA"))).strip()
+        ).upper()
+        return JsonResponse(
+            {
+                "mensaje": "Autorización actualizada correctamente.",
+                "estado": estado_nuevo,
+            },
+            status=200,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
+
+@csrf_exempt
 @require_rbac("inventario_bodega", "C")
 def api_orquestar_movimiento(request: Any) -> JsonResponse:
     """POST /api/v1/movimientos/orquestar/ -> actualiza stock, cardex y telemetría."""
