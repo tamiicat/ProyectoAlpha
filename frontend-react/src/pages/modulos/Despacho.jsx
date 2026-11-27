@@ -11,6 +11,8 @@ export default function Despacho() {
     const [despachos, setDespachos] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
+    const [aviso, setAviso] = useState(null); // { tipo: 'success' | 'danger' | 'warning', mensaje: string }
+    const [avisoModal, setAvisoModal] = useState(null);
     const [seleccionadoId, setSeleccionadoId] = useState('');
     const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
     const [guardando, setGuardando] = useState(false);
@@ -144,6 +146,7 @@ export default function Despacho() {
 
     const handleCambiarEstado = async (nuevoEstado) => {
         if (!despacho) return;
+        setAviso(null);
         if (nuevoEstado === 'anulado') {
             const confirmar = window.confirm(`¿Seguro que deseas anular el Despacho #${String(despacho.id_despacho).padStart(3, '0')}?`);
             if (!confirmar) return;
@@ -155,8 +158,15 @@ export default function Despacho() {
                 body: JSON.stringify({ estado: nuevoEstado })
             });
             await cargarCatalogosYDespachos(despacho.id_despacho);
+            setAviso({
+                tipo: 'success',
+                mensaje: `Estado del Despacho #${String(despacho.id_despacho).padStart(3, '0')} actualizado a "${nuevoEstado}".`
+            });
         } catch (err) {
-            alert(`No se pudo actualizar el estado del despacho: ${err?.message || 'Error en el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo actualizar el estado del despacho: ${err?.message || 'Error en el servidor.'}`
+            });
         }
     };
 
@@ -168,12 +178,14 @@ export default function Despacho() {
             id_cliente: idCli,
             direccion_entrega: cli ? cli.direccion : ''
         }));
+        if (avisoModal) setAvisoModal(null);
     };
 
     const handleAgregarDetalleNuevo = () => {
+        setAvisoModal(null);
         const cantNum = parseInt(cantidadActual, 10);
         if (!idArticuloActual || !cantNum || cantNum <= 0) {
-            alert('Seleccione un artículo y una cantidad válida.');
+            setAvisoModal({ tipo: 'warning', mensaje: 'Seleccione un artículo y una cantidad válida.' });
             return;
         }
         const art = articulos.find((a) => String(a.id_articulo) === String(idArticuloActual));
@@ -206,12 +218,14 @@ export default function Despacho() {
 
     const handleQuitarDetalleNuevo = (id_articulo) => {
         setDetallesNuevos((prev) => prev.filter((item) => item.id_articulo !== id_articulo));
+        if (avisoModal) setAvisoModal(null);
     };
 
     const handleCrearDespacho = async (e) => {
         e.preventDefault();
+        setAvisoModal(null);
         if (detallesNuevos.length === 0) {
-            alert('Debe agregar al menos un artículo al despacho.');
+            setAvisoModal({ tipo: 'warning', mensaje: 'Debe agregar al menos un artículo al despacho.' });
             return;
         }
 
@@ -238,6 +252,8 @@ export default function Despacho() {
             const nuevoId = resp?.id_despacho ?? resp?.id ?? null;
             await cargarCatalogosYDespachos(nuevoId);
             setMostrarModalNuevo(false);
+            setAvisoModal(null);
+            setAviso({ tipo: 'success', mensaje: 'Despacho registrado correctamente en el servidor.' });
             setNuevoForm({
                 id_cliente: '',
                 id_obra: '',
@@ -248,7 +264,10 @@ export default function Despacho() {
             });
             setDetallesNuevos([]);
         } catch (err) {
-            alert(`No se pudo registrar el despacho: ${err?.message || 'Error en el servidor.'}`);
+            setAvisoModal({
+                tipo: 'danger',
+                mensaje: `No se pudo registrar el despacho: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setGuardando(false);
         }
@@ -269,7 +288,10 @@ export default function Despacho() {
                     <div className="d-flex gap-2">
                         <button
                             type="button"
-                            onClick={() => setMostrarModalNuevo(true)}
+                            onClick={() => {
+                                setAvisoModal(null);
+                                setMostrarModalNuevo(true);
+                            }}
                             className="btn btn-light rounded-pill px-4 fw-semibold d-flex align-items-center gap-2"
                             style={{ color: '#2b3d52' }}
                         >
@@ -292,6 +314,32 @@ export default function Despacho() {
                         </div>
                     )}
 
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
+                        </div>
+                    )}
+
                     {/* Selector de Despacho */}
                     <div className="row mb-4 align-items-center">
                         <div className="col-12 col-md-8">
@@ -300,7 +348,10 @@ export default function Despacho() {
                                 className="form-select shadow-sm border-light bg-light"
                                 value={seleccionadoId}
                                 disabled={cargando || despachos.length === 0}
-                                onChange={(e) => setSeleccionadoId(Number(e.target.value))}
+                                onChange={(e) => {
+                                    setSeleccionadoId(Number(e.target.value));
+                                    if (aviso) setAviso(null);
+                                }}
                             >
                                 {despachos.length === 0 ? (
                                     <option value="">
@@ -462,6 +513,21 @@ export default function Despacho() {
                             </div>
                             <form onSubmit={handleCrearDespacho}>
                                 <div className="modal-body p-4">
+                                    {avisoModal && (
+                                        <div
+                                            className={`alert alert-${avisoModal.tipo} alert-dismissible fade show rounded-3 mb-3 d-flex justify-content-between align-items-center`}
+                                            role="alert"
+                                        >
+                                            <span className="small">{avisoModal.mensaje}</span>
+                                            <button
+                                                type="button"
+                                                className="btn-close"
+                                                aria-label="Cerrar"
+                                                onClick={() => setAvisoModal(null)}
+                                            ></button>
+                                        </div>
+                                    )}
+
                                     <div className="row g-3 mb-4">
                                         <div className="col-12 col-md-6">
                                             <label className="form-label fw-semibold text-muted small">Cliente</label>

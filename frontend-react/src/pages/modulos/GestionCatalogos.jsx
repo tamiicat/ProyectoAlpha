@@ -10,6 +10,7 @@ export default function GestionCatalogos() {
     const [ubicaciones, setUbicaciones] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
+    const [aviso, setAviso] = useState(null); // { tipo: 'success' | 'danger' | 'warning', mensaje: string }
     const [guardando, setGuardando] = useState(false);
 
     // Modal Categoría
@@ -83,12 +84,14 @@ export default function GestionCatalogos() {
 
     // === CRUD CATEGORÍAS ===
     const abrirNuevaCat = () => {
+        setAviso(null);
         setEditandoCat(false);
         setFormCat({ id_categoria: null, nombre: '', activo: true });
         setModalCat(true);
     };
 
     const abrirEditarCat = (cat) => {
+        setAviso(null);
         setEditandoCat(true);
         setFormCat({
             id_categoria: cat.id_categoria,
@@ -121,8 +124,18 @@ export default function GestionCatalogos() {
 
             await cargarDatos();
             setModalCat(false);
+            setAviso({
+                tipo: 'success',
+                mensaje: editandoCat
+                    ? 'Categoría actualizada correctamente.'
+                    : 'Categoría creada correctamente.'
+            });
         } catch (err) {
-            alert(`No se pudo guardar la categoría: ${err?.message || 'Error en el servidor.'}`);
+            setModalCat(false);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo guardar la categoría: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setGuardando(false);
         }
@@ -132,25 +145,35 @@ export default function GestionCatalogos() {
         const accion = cat.activo ? 'desactivar' : 'reactivar';
         if (!window.confirm(`¿Seguro que deseas ${accion} la categoría "${cat.nombre}"?`)) return;
 
+        setAviso(null);
         try {
             await apiFetch(`/categorias/${cat.id_categoria}/`, {
                 method: 'PATCH',
                 body: JSON.stringify({ activo: !cat.activo })
             });
             await cargarDatos();
+            setAviso({
+                tipo: 'success',
+                mensaje: `Categoría "${cat.nombre}" ${cat.activo ? 'desactivada' : 'reactivada'} correctamente.`
+            });
         } catch (err) {
-            alert(`No se pudo ${accion} la categoría: ${err?.message || 'Error en el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo ${accion} la categoría: ${err?.message || 'Error en el servidor.'}`
+            });
         }
     };
 
     // === CRUD UBICACIONES ===
     const abrirNuevaUb = () => {
+        setAviso(null);
         setEditandoUb(false);
         setFormUb({ id_ubicacion: null, bodega: '', detalle: '', activo: true });
         setModalUb(true);
     };
 
     const abrirEditarUb = (ub) => {
+        setAviso(null);
         setEditandoUb(true);
         setFormUb({
             id_ubicacion: ub.id_ubicacion,
@@ -185,8 +208,18 @@ export default function GestionCatalogos() {
 
             await cargarDatos();
             setModalUb(false);
+            setAviso({
+                tipo: 'success',
+                mensaje: editandoUb
+                    ? 'Ubicación actualizada correctamente.'
+                    : 'Ubicación creada correctamente.'
+            });
         } catch (err) {
-            alert(`No se pudo guardar la ubicación: ${err?.message || 'Error en el servidor.'}`);
+            setModalUb(false);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo guardar la ubicación: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setGuardando(false);
         }
@@ -196,14 +229,22 @@ export default function GestionCatalogos() {
         const accion = ub.activo ? 'desactivar' : 'reactivar';
         if (!window.confirm(`¿Seguro que deseas ${accion} la ubicación "${ub.bodega}"?`)) return;
 
+        setAviso(null);
         try {
             await apiFetch(`/ubicaciones/${ub.id_ubicacion}/`, {
                 method: 'PATCH',
                 body: JSON.stringify({ activo: !ub.activo })
             });
             await cargarDatos();
+            setAviso({
+                tipo: 'success',
+                mensaje: `Ubicación "${ub.bodega}" ${ub.activo ? 'desactivada' : 'reactivada'} correctamente.`
+            });
         } catch (err) {
-            alert(`No se pudo ${accion} la ubicación: ${err?.message || 'Error en el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo ${accion} la ubicación: ${err?.message || 'Error en el servidor.'}`
+            });
         }
     };
 
@@ -250,12 +291,41 @@ export default function GestionCatalogos() {
                         </div>
                     )}
 
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
+                        </div>
+                    )}
+
                     {/* Pestañas */}
                     <ul className="nav nav-pills mb-4 gap-2">
                         <li className="nav-item">
                             <button
                                 type="button"
-                                onClick={() => setTabActiva('categorias')}
+                                onClick={() => {
+                                    setTabActiva('categorias');
+                                    if (aviso) setAviso(null);
+                                }}
                                 className={`nav-link rounded-pill px-4 fw-semibold ${tabActiva === 'categorias' ? 'active' : 'text-secondary bg-light'}`}
                                 style={tabActiva === 'categorias' ? { backgroundColor: '#2b3d52' } : {}}
                             >
@@ -265,7 +335,10 @@ export default function GestionCatalogos() {
                         <li className="nav-item">
                             <button
                                 type="button"
-                                onClick={() => setTabActiva('ubicaciones')}
+                                onClick={() => {
+                                    setTabActiva('ubicaciones');
+                                    if (aviso) setAviso(null);
+                                }}
                                 className={`nav-link rounded-pill px-4 fw-semibold ${tabActiva === 'ubicaciones' ? 'active' : 'text-secondary bg-light'}`}
                                 style={tabActiva === 'ubicaciones' ? { backgroundColor: '#2b3d52' } : {}}
                             >

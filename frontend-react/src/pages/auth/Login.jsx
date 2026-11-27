@@ -13,7 +13,7 @@ export default function Login() {
         recuerdame: false
     });
     const [mostrarContrasena, setMostrarContrasena] = useState(false);
-    const [error, setError] = useState('');
+    const [aviso, setAviso] = useState(null); // { tipo: 'danger' | 'info', mensaje: string }
     const [cargando, setCargando] = useState(false);
 
     // Cargar solo el correo/usuario recordado al montar (nunca sesión ni token)
@@ -109,7 +109,7 @@ export default function Login() {
             ...prev,
             [name]: type === 'checkbox' ? checked : value
         }));
-        if (error) setError('');
+        if (aviso) setAviso(null);
     };
 
     const handleSubmit = async (e) => {
@@ -117,12 +117,12 @@ export default function Login() {
 
         const usuarioLimpio = formData.usuario.trim();
         if (!usuarioLimpio || !formData.contrasena) {
-            setError('Debe ingresar su correo y contraseña.');
+            setAviso({ tipo: 'danger', mensaje: 'Debe ingresar su correo y contraseña.' });
             return;
         }
 
         setCargando(true);
-        setError('');
+        setAviso(null);
 
         try {
             const data = await authFetch('/auth/login', {
@@ -151,7 +151,10 @@ export default function Login() {
 
             guardarSesionYEntrar(sesionBackend, usuarioLimpio, obtenerRutaPorRol(rolCrudo));
         } catch (err) {
-            setError(err.message || 'No se pudo iniciar sesión con el servicio de autenticación.');
+            setAviso({
+                tipo: 'danger',
+                mensaje: err.message || 'No se pudo iniciar sesión con el servicio de autenticación.'
+            });
         } finally {
             setCargando(false);
         }
@@ -159,7 +162,10 @@ export default function Login() {
 
     const handleOlvidoContrasena = (e) => {
         e.preventDefault();
-        alert('Para restablecer tu contraseña, solicita asistencia al Administrador del sistema FYAG.');
+        setAviso({
+            tipo: 'info',
+            mensaje: 'Para restablecer tu contraseña, solicita asistencia al Administrador del sistema FYAG.'
+        });
     };
 
     return (
@@ -183,9 +189,9 @@ export default function Login() {
                     <div className="col-12 col-md-7 p-5 bg-white d-flex flex-column justify-content-center">
                         <h4 className="fw-bold mb-4" style={{ color: '#2b3d52' }}>Iniciar Sesión</h4>
 
-                        {error && (
-                            <div className="alert alert-danger py-2 small" role="alert">
-                                {error}
+                        {aviso && (
+                            <div className={`alert alert-${aviso.tipo} py-2 small`} role="alert">
+                                {aviso.mensaje}
                             </div>
                         )}
 

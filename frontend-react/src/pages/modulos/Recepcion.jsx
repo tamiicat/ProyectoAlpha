@@ -12,6 +12,7 @@ export default function Recepcion() {
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState('');
     const [guardando, setGuardando] = useState(false);
+    const [aviso, setAviso] = useState(null); // { tipo: 'success' | 'danger' | 'warning', mensaje: string }
 
     const [formData, setFormData] = useState({
         id_factura: '',
@@ -127,13 +128,17 @@ export default function Recepcion() {
             ...prev,
             [name]: value
         }));
+        if (aviso) {
+            setAviso(null);
+        }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setAviso(null);
 
         if (!facturaSeleccionada) {
-            alert('Debe seleccionar una factura.');
+            setAviso({ tipo: 'warning', mensaje: 'Debe seleccionar una factura.' });
             return;
         }
 
@@ -158,9 +163,15 @@ export default function Recepcion() {
                 observaciones: ''
             }));
             await cargarDatos();
-            alert(`Recepción de ${facturaSeleccionada.numero} guardada correctamente en el servidor.`);
+            setAviso({
+                tipo: 'success',
+                mensaje: `Recepción de ${facturaSeleccionada.numero} guardada correctamente en el servidor.`
+            });
         } catch (err) {
-            alert(`No se pudo guardar la recepción: ${err?.message || 'Error en el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo guardar la recepción: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             setGuardando(false);
         }
@@ -191,6 +202,32 @@ export default function Recepcion() {
                             <button type="button" onClick={cargarDatos} className="btn btn-sm btn-outline-danger ms-3">
                                 Reintentar
                             </button>
+                        </div>
+                    )}
+
+                    {aviso && (
+                        <div
+                            className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                            role="alert"
+                        >
+                            <div>
+                                <i
+                                    className={`bi me-2 ${
+                                        aviso.tipo === 'success'
+                                            ? 'bi-check-circle-fill'
+                                            : aviso.tipo === 'warning'
+                                            ? 'bi-exclamation-triangle-fill'
+                                            : 'bi-x-circle-fill'
+                                    }`}
+                                ></i>
+                                <span>{aviso.mensaje}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-close"
+                                aria-label="Cerrar"
+                                onClick={() => setAviso(null)}
+                            ></button>
                         </div>
                     )}
 

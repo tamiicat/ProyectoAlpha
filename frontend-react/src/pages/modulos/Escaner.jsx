@@ -15,6 +15,7 @@ export default function Escaner() {
     const [articuloDetectado, setArticuloDetectado] = useState(null);
     const [noEncontrado, setNoEncontrado] = useState(false);
     const [errorConsulta, setErrorConsulta] = useState('');
+    const [aviso, setAviso] = useState(null); // { tipo: 'success' | 'danger' | 'warning', mensaje: string }
     const [buscando, setBuscando] = useState(false);
     const [confirmando, setConfirmando] = useState(false);
 
@@ -90,6 +91,7 @@ export default function Escaner() {
     const iniciarCamara = async () => {
         if (operandoCamaraRef.current || camaraActiva) return;
         setErrorCamara('');
+        setAviso(null);
         setCamaraActiva(true);
 
         timerCamaraRef.current = setTimeout(async () => {
@@ -140,6 +142,7 @@ export default function Escaner() {
         const limpio = String(codigo || '').trim();
         setCodigoInput(limpio);
         setErrorConsulta('');
+        setAviso(null);
 
         if (!limpio) {
             setArticuloDetectado(null);
@@ -206,15 +209,16 @@ export default function Escaner() {
     const handleConfirmarMovimiento = async (e) => {
         e.preventDefault();
         if (!articuloDetectado) return;
+        setAviso(null);
 
         const cantNum = parseInt(cantidad, 10);
         if (!cantNum || cantNum <= 0) {
-            alert('Ingrese una cantidad válida mayor a 0.');
+            setAviso({ tipo: 'warning', mensaje: 'Ingrese una cantidad válida mayor a 0.' });
             return;
         }
 
         if (tipoMovimiento === 'salida' && cantNum > articuloDetectado.stock_actual) {
-            alert('No hay suficiente stock para realizar esta salida.');
+            setAviso({ tipo: 'warning', mensaje: 'No hay suficiente stock para realizar esta salida.' });
             return;
         }
 
@@ -254,12 +258,16 @@ export default function Escaner() {
                 )
             );
 
-            alert(
-                `${tipoMovimiento === 'ingreso' ? 'Ingreso' : 'Salida'} confirmado en el servidor. Nuevo stock de "${articuloDetectado.nombre}": ${nuevoStock} ${articuloDetectado.unidad_de_medida}.`
-            );
+            setAviso({
+                tipo: 'success',
+                mensaje: `${tipoMovimiento === 'ingreso' ? 'Ingreso' : 'Salida'} confirmado en el servidor. Nuevo stock de "${articuloDetectado.nombre}": ${nuevoStock} ${articuloDetectado.unidad_de_medida}.`
+            });
         } catch (err) {
             if (!montadoRef.current) return;
-            alert(`No se pudo registrar el movimiento: ${err?.message || 'Error en el servidor.'}`);
+            setAviso({
+                tipo: 'danger',
+                mensaje: `No se pudo registrar el movimiento: ${err?.message || 'Error en el servidor.'}`
+            });
         } finally {
             if (montadoRef.current) {
                 setConfirmando(false);
@@ -275,6 +283,7 @@ export default function Escaner() {
         setNoEncontrado(false);
         setErrorConsulta('');
         setErrorCamara('');
+        setAviso(null);
         setCantidad(1);
         inputRef.current?.focus();
     };
@@ -307,6 +316,32 @@ export default function Escaner() {
                 <div className="bg-white p-4 p-md-5 border-top-0">
                     <div className="row justify-content-center">
                         <div className="col-12 col-md-10">
+                            {aviso && (
+                                <div
+                                    className={`alert alert-${aviso.tipo} alert-dismissible fade show rounded-3 shadow-sm mb-4 d-flex justify-content-between align-items-center`}
+                                    role="alert"
+                                >
+                                    <div>
+                                        <i
+                                            className={`bi me-2 ${
+                                                aviso.tipo === 'success'
+                                                    ? 'bi-check-circle-fill'
+                                                    : aviso.tipo === 'warning'
+                                                    ? 'bi-exclamation-triangle-fill'
+                                                    : 'bi-x-circle-fill'
+                                            }`}
+                                        ></i>
+                                        <span>{aviso.mensaje}</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        aria-label="Cerrar"
+                                        onClick={() => setAviso(null)}
+                                    ></button>
+                                </div>
+                            )}
+
                             {/* Lector USB / entrada manual + Botón Cámara */}
                             <form onSubmit={handleBuscarSubmit} className="mb-3">
                                 <div className="d-flex justify-content-between align-items-center mb-1">
@@ -325,7 +360,10 @@ export default function Escaner() {
                                         maxLength={20}
                                         disabled={buscando || confirmando}
                                         value={codigoInput}
-                                        onChange={(e) => setCodigoInput(e.target.value)}
+                                        onChange={(e) => {
+                                            setCodigoInput(e.target.value);
+                                            if (aviso) setAviso(null);
+                                        }}
                                         className="form-control bg-light border-light"
                                         placeholder="Escanee con pistola USB o escriba el código..."
                                     />
@@ -468,7 +506,10 @@ export default function Escaner() {
                                                 <select
                                                     disabled={confirmando}
                                                     value={tipoMovimiento}
-                                                    onChange={(e) => setTipoMovimiento(e.target.value)}
+                                                    onChange={(e) => {
+                                                        setTipoMovimiento(e.target.value);
+                                                        if (aviso) setAviso(null);
+                                                    }}
                                                     className="form-select bg-white shadow-sm border-light"
                                                 >
                                                     <option value="ingreso">Ingreso a Bodega (+)</option>
@@ -483,7 +524,10 @@ export default function Escaner() {
                                                     required
                                                     disabled={confirmando}
                                                     value={cantidad}
-                                                    onChange={(e) => setCantidad(e.target.value)}
+                                                    onChange={(e) => {
+                                                        setCantidad(e.target.value);
+                                                        if (aviso) setAviso(null);
+                                                    }}
                                                     className="form-control bg-white shadow-sm border-light"
                                                 />
                                             </div>
