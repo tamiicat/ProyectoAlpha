@@ -208,70 +208,192 @@ def api_buscar_inventario(request: Any) -> JsonResponse:
     return JsonResponse({"resultados": resultados, "total": len(resultados)}, status=200)
 
 
-@require_rbac("inventario_bodega", "R")
+@csrf_exempt
 def api_categorias(request: Any) -> JsonResponse:
-    """GET /api/v1/categorias/ -> lista categorías activas."""
-    if request.method != "GET":
-        return JsonResponse({"error": "Método no permitido."}, status=405)
+    """GET/POST /api/v1/categorias/ -> lista o crea categorías activas."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
 
-    categorias: list[dict[str, Any]] = []
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id_categoria, nombre, activo
-                FROM categoria
-                WHERE activo = TRUE
-                ORDER BY nombre ASC;
-                """
+    if request.method == "GET":
+        if "R" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (R)."},
+                status=403,
             )
-            for row in cursor.fetchall():
-                categorias.append(
-                    {
-                        "id": row[0],
-                        "id_categoria": row[0],
-                        "nombre": row[1],
-                        "activo": row[2],
-                    }
+
+        categorias: list[dict[str, Any]] = []
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id_categoria, nombre, activo
+                    FROM categoria
+                    WHERE activo = TRUE
+                    ORDER BY nombre ASC;
+                    """
                 )
-    except Exception:
-        categorias = []
+                for row in cursor.fetchall():
+                    categorias.append(
+                        {
+                            "id": row[0],
+                            "id_categoria": row[0],
+                            "nombre": row[1],
+                            "activo": row[2],
+                        }
+                    )
+        except Exception:
+            categorias = []
 
-    return JsonResponse({"categorias": categorias, "total": len(categorias)}, status=200)
+        return JsonResponse({"categorias": categorias, "total": len(categorias)}, status=200)
+
+    if request.method == "POST":
+        if "C" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        nombre = sanitize_text_input(
+            str(data.get("nombre", data.get("categoria", data.get("name", "")))).strip()
+        )
+        if not nombre:
+            return JsonResponse({"error": "El nombre de la categoría es obligatorio."}, status=400)
+
+        id_categoria_bd = None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO categoria (nombre, activo)
+                    VALUES (%s, TRUE)
+                    RETURNING id_categoria;
+                    """,
+                    [nombre[:100]],
+                )
+                id_categoria_bd = int(cursor.fetchone()[0])
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al guardar categoría en BD: {exc}"}, status=500
+            )
+
+        nueva_categoria = {
+            "id": id_categoria_bd,
+            "id_categoria": id_categoria_bd,
+            "nombre": nombre,
+            "activo": True,
+        }
+        return JsonResponse(
+            {"categoria": nueva_categoria, "mensaje": "Categoría creada correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
-@require_rbac("inventario_bodega", "R")
+@csrf_exempt
 def api_ubicaciones(request: Any) -> JsonResponse:
-    """GET /api/v1/ubicaciones/ -> lista ubicaciones activas."""
-    if request.method != "GET":
-        return JsonResponse({"error": "Método no permitido."}, status=405)
+    """GET/POST /api/v1/ubicaciones/ -> lista o crea ubicaciones activas."""
+    role = getattr(request, "jwt_role", None)
+    if not role:
+        return JsonResponse({"error": "No autenticado: falta rol JWT."}, status=401)
 
-    ubicaciones: list[dict[str, Any]] = []
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id_ubicacion, bodega, detalle, activo
-                FROM ubicacion
-                WHERE activo = TRUE
-                ORDER BY bodega ASC, detalle ASC;
-                """
+    if request.method == "GET":
+        if "R" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (R)."},
+                status=403,
             )
-            for row in cursor.fetchall():
-                ubicaciones.append(
-                    {
-                        "id": row[0],
-                        "id_ubicacion": row[0],
-                        "bodega": row[1],
-                        "detalle": row[2],
-                        "nombre": f"{row[1]} - {row[2]}" if row[2] else row[1],
-                        "activo": row[3],
-                    }
-                )
-    except Exception:
-        ubicaciones = []
 
-    return JsonResponse({"ubicaciones": ubicaciones, "total": len(ubicaciones)}, status=200)
+        ubicaciones: list[dict[str, Any]] = []
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id_ubicacion, bodega, detalle, activo
+                    FROM ubicacion
+                    WHERE activo = TRUE
+                    ORDER BY bodega ASC, detalle ASC;
+                    """
+                )
+                for row in cursor.fetchall():
+                    ubicaciones.append(
+                        {
+                            "id": row[0],
+                            "id_ubicacion": row[0],
+                            "bodega": row[1],
+                            "detalle": row[2],
+                            "nombre": f"{row[1]} - {row[2]}" if row[2] else row[1],
+                            "activo": row[3],
+                        }
+                    )
+        except Exception:
+            ubicaciones = []
+
+        return JsonResponse({"ubicaciones": ubicaciones, "total": len(ubicaciones)}, status=200)
+
+    if request.method == "POST":
+        if "C" not in RBAC_MATRIX.get(role, {}).get("inventario_bodega", set()):
+            return JsonResponse(
+                {"error": f"Acceso denegado para rol '{role}' en módulo 'inventario_bodega' (C)."},
+                status=403,
+            )
+
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        bodega = sanitize_text_input(
+            str(data.get("bodega", data.get("nombre", ""))).strip()
+        )
+        detalle = sanitize_text_input(
+            str(data.get("detalle", data.get("descripcion", ""))).strip()
+        )
+
+        if not bodega and not detalle:
+            return JsonResponse(
+                {"error": "Debes indicar bodega o detalle para la ubicación."}, status=400
+            )
+        if not bodega:
+            bodega = "Bodega Principal"
+
+        id_ubicacion_bd = None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO ubicacion (bodega, detalle, activo)
+                    VALUES (%s, %s, TRUE)
+                    RETURNING id_ubicacion;
+                    """,
+                    [bodega[:100], detalle[:150]],
+                )
+                id_ubicacion_bd = int(cursor.fetchone()[0])
+        except Exception as exc:
+            return JsonResponse(
+                {"error": f"Error al guardar ubicación en BD: {exc}"}, status=500
+            )
+
+        nueva_ubicacion = {
+            "id": id_ubicacion_bd,
+            "id_ubicacion": id_ubicacion_bd,
+            "bodega": bodega,
+            "detalle": detalle,
+            "nombre": f"{bodega} - {detalle}" if detalle else bodega,
+            "activo": True,
+        }
+        return JsonResponse(
+            {"ubicacion": nueva_ubicacion, "mensaje": "Ubicación creada correctamente."},
+            status=201,
+        )
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
 @require_rbac("inventario_bodega", "R")
