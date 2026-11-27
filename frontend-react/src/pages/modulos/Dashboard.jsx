@@ -171,6 +171,7 @@ const CONFIG_ROLES = {
 export default function Dashboard({ rol = 'admin' }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
+  const [bodegasCatalogo, setBodegasCatalogo] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -203,9 +204,20 @@ export default function Dashboard({ rol = 'admin' }) {
     setLoading(true);
     setError('');
     try {
-      const data = await apiFetch('/inventario/items/');
-      const lista = Array.isArray(data) ? data : data?.items || data?.results || [];
+      const [dataItems, dataUbicaciones] = await Promise.all([
+        apiFetch('/inventario/items/'),
+        apiFetch('/ubicaciones/').catch(() => []),
+      ]);
+
+      const lista = Array.isArray(dataItems)
+        ? dataItems
+        : dataItems?.items || dataItems?.results || [];
       setItems(lista);
+
+      const listaUb = Array.isArray(dataUbicaciones)
+        ? dataUbicaciones
+        : dataUbicaciones?.ubicaciones || dataUbicaciones?.results || [];
+      setBodegasCatalogo(listaUb);
     } catch (err) {
       setError(err.message || 'No se pudo conectar con el servidor');
     } finally {
@@ -244,11 +256,22 @@ export default function Dashboard({ rol = 'admin' }) {
     });
   }, [items]);
 
-  // Lista única de bodegas para el filtro
+  // Nombres de bodegas activas desde el catálogo /ubicaciones/
+  const nombresCatalogo = useMemo(() => {
+    return bodegasCatalogo
+      .filter((u) => u && u.activo !== false)
+      .map((u) => String(u.nombre ?? u.bodega ?? u.ubicacion ?? '').trim())
+      .filter(Boolean);
+  }, [bodegasCatalogo]);
+
+  // Lista única de bodegas (catálogo + ubicaciones presentes en artículos)
   const listaBodegas = useMemo(() => {
-    const unicas = Array.from(new Set(normalizados.map((i) => i.ubicacion)));
-    return unicas.sort((a, b) => a.localeCompare(b));
-  }, [normalizados]);
+    const unicas = new Set([
+      ...nombresCatalogo,
+      ...normalizados.map((i) => i.ubicacion),
+    ]);
+    return Array.from(unicas).sort((a, b) => a.localeCompare(b));
+  }, [nombresCatalogo, normalizados]);
 
   // Inventario filtrado por la bodega seleccionada
   const itemsFiltradosBodega = useMemo(() => {
@@ -294,18 +317,21 @@ export default function Dashboard({ rol = 'admin' }) {
 
   const porUbicacion = useMemo(() => {
     const mapa = {};
+    nombresCatalogo.forEach((nombre) => {
+      mapa[nombre] = 0;
+    });
     normalizados.forEach((i) => {
       mapa[i.ubicacion] = (mapa[i.ubicacion] || 0) + 1;
     });
-    const total = normalizados.length || 1;
+    const total = normalizados.length;
     return Object.entries(mapa)
       .map(([nombre, cantidad]) => ({
         nombre,
         cantidad,
-        porcentaje: Math.round((cantidad / total) * 100),
+        porcentaje: total > 0 ? Math.round((cantidad / total) * 100) : 0,
       }))
-      .sort((a, b) => b.cantidad - a.cantidad);
-  }, [normalizados]);
+      .sort((a, b) => b.cantidad - a.cantidad || a.nombre.localeCompare(b.nombre));
+  }, [nombresCatalogo, normalizados]);
 
   const fechaHoy = new Date().toLocaleDateString('es-CL', {
     weekday: 'long',
@@ -451,7 +477,7 @@ export default function Dashboard({ rol = 'admin' }) {
                 onChange={(e) => setBodegaSeleccionada(e.target.value)}
                 aria-label="Filtrar por bodega"
               >
-                <option value="TODAS">Todas las bodegas ({normalizados.length})</option>
+                <option value="TODAS">Todas las bodegas ({listaBodegas.length})</option>
                 {listaBodegas.map((bod) => (
                   <option key={bod} value={bod}>
                     {bod}
