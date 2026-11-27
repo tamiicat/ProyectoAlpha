@@ -1,4 +1,4 @@
-"""Capa Vista (MVC): Endpoints REST de salud, obras, inventario, orquestación dual y sync offline."""
+﻿"""Capa Vista (MVC): Endpoints REST de salud, obras, inventario, orquestación dual y sync offline."""
 
 import json
 from typing import Any
@@ -1546,60 +1546,236 @@ def api_obras(request: Any) -> JsonResponse:
     return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
+def _columnas_tabla_pg(tabla: str) -> set[str]:
+    """Obtiene los nombres reales de columnas de una tabla en PostgreSQL."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s;
+            """,
+            [tabla],
+        )
+        return {row[0] for row in cursor.fetchall()}
+
+
+def _resolver_id_usuario_despacho(request: Any) -> int | None:
+    """Obtiene id_usuario válido desde el JWT o desde la tabla usuario."""
+    jwt_payload = getattr(request, "jwt_payload", {}) or {}
+    for key in ("id_usuario", "user_id", "id"):
+        val = jwt_payload.get(key)
+        if val is not None:
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                pass
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id_usuario FROM usuario WHERE activo = TRUE ORDER BY id_usuario ASC LIMIT 1;")
+        row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else None
+
+
 @csrf_exempt
 @require_rbac("inventario_bodega", "R")
 def api_despachos(request: Any) -> JsonResponse:
-    """GET/POST /api/v1/despachos/ -> lista o registra despachos de bodega."""
-    if request.method == "GET":
-        despachos: list[dict[str, Any]] = []
-        try:
+    """GET/POST /api/v1/despachos/ -> consulta o registra despachos reales en PostgreSQL."""
+    try:
+        cols_desp = _columnas_tabla_pg("despacho")
+        if not cols_desp:
+            return JsonResponse(
+                {"error": "La tabla 'despacho' no existe en la base de datos PostgreSQL."},
+                status=500,
+            )
+
+        tabla_det = None
+        cols_det: set[str] = set()
+        for candidata in ("detalle_despacho", "despacho_detalle"):
+            cols_cand = _columnas_tabla_pg(candidata)
+            if cols_cand:
+                tabla_det = candidata
+                cols_det = cols_cand
+                break
+
+        if request.method == "GET":
             with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM despacho ORDER BY 1 DESC;")
+                headers = [col[0] for col in cursor.description] if cursor.description else []
+                filas = cursor.fetchall()
+
+                # Mapas de clientes, obras y usuarios para mostrar nombres reales
                 cursor.execute(
-                    """
-                    SELECT id_despacho, numero_despacho, id_obra, estado,
-                           observacion, fecha_despacho
-                    FROM despacho
-                    ORDER BY id_despacho DESC;
-                    """
+                    "SELECT id_cliente, TRIM(CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, ''))) FROM cliente;"
                 )
-                for row in cursor.fetchall():
+                mapa_clientes = {r[0]: r[1] for r in cursor.fetchall()}
+
+                cursor.execute("SELECT id_obra, COALESCE(descripcion, codigo) FROM obra;")
+                mapa_obras = {r[0]: r[1] for r in cursor.fetchall()}
+
+                cursor.execute(
+                    "SELECT id_usuario, COALESCE(NULLIF(TRIM(CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, ''))), ''), usuario) FROM usuario;"
+                )
+                mapa_usuarios = {r[0]: r[1] for r in cursor.fetchall()}
+
+                cursor.execute("SELECT id_articulo, nombre, unidad_de_medida FROM articulo;")
+                mapa_articulos = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
+
+                despachos: list[dict[str, Any]] = []
+                for fila in filas:
+                    rec = dict(zip(headers, fila))
+                    id_desp = rec.get("id_despacho") or rec.get("id")
+                    id_cli = rec.get("id_cliente")
+                    id_obr = rec.get("id_obra")
+                    id_usr = rec.get("id_usuario")
+
+                    detalles_lista: list[dict[str, Any]] = []
+                    if tabla_det and id_desp is not None:
+                        col_fk = "id_despacho" if "id_despacho" in cols_det else headers[0]
+                        cursor.execute(
+                            f"SELECT * FROM {tabla_det} WHERE {col_fk} = %s ORDER BY 1 ASC;",
+                            [id_desp],
+                        )
+                        det_headers = [c[0] for c in cursor.description] if cursor.description else []
+                        for d_row in cursor.fetchall():
+                            d_rec = dict(zip(det_headers, d_row))
+                            id_art = d_rec.get("id_articulo")
+                            art_info = mapa_articulos.get(id_art, (f"Artículo #{id_art}", "unidad"))
+                            detalles_lista.append(
+                                {
+                                    "id_detalle": d_rec.get("id_detalle") or d_rec.get("id_detalle_despacho") or d_rec.get("id"),
+                                    "id_articulo": id_art,
+                                    "articulo_nombre": art_info[0],
+                                    "unidad_de_medida": art_info[1] or "unidad",
+                                    "cantidad": d_rec.get("cantidad", 1),
+                                }
+                            )
+
+                    f_desp = rec.get("fecha_despacho") or rec.get("fecha") or ""
+                    f_ent = rec.get("fecha_entrega") or ""
                     despachos.append(
                         {
-                            "id": row[0],
-                            "id_despacho": row[0],
-                            "numero_despacho": row[1],
-                            "id_obra": row[2],
-                            "estado": row[3],
-                            "observacion": row[4],
-                            "fecha": str(row[5]) if row[5] else None,
+                            "id": id_desp,
+                            "id_despacho": id_desp,
+                            "id_cliente": id_cli,
+                            "cliente_nombre": mapa_clientes.get(id_cli) or f"Cliente #{id_cli}" if id_cli else "Cliente",
+                            "id_usuario": id_usr,
+                            "usuario_nombre": mapa_usuarios.get(id_usr) or "Usuario FYAG",
+                            "id_obra": id_obr,
+                            "obra_nombre": mapa_obras.get(id_obr) if id_obr else None,
+                            "fecha_despacho": f_desp.isoformat() if hasattr(f_desp, "isoformat") else str(f_desp),
+                            "fecha_entrega": f_ent.isoformat() if hasattr(f_ent, "isoformat") else (str(f_ent) if f_ent else None),
+                            "estado": str(rec.get("estado") or "pendiente").lower(),
+                            "boleta": str(rec.get("boleta") or rec.get("numero_despacho") or ""),
+                            "direccion_entrega": str(rec.get("direccion_entrega") or rec.get("direccion") or ""),
+                            "detalles": detalles_lista,
                         }
                     )
-        except Exception:
-            despachos = []
 
-        return JsonResponse(
-            {"despachos": despachos, "total": len(despachos)}, status=200
-        )
+            return JsonResponse({"despachos": despachos, "total": len(despachos)}, status=200)
 
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body.decode("utf-8") or "{}")
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "JSON inválido."}, status=400)
+        if request.method == "POST":
+            try:
+                data = json.loads(request.body.decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                return JsonResponse({"error": "JSON inválido."}, status=400)
 
-        observacion = sanitize_text_input(str(data.get("observacion", "")).strip())
-        return JsonResponse(
-            {
-                "mensaje": "Despacho registrado correctamente.",
-                "despacho": {
-                    "estado": "DESPACHADO",
-                    "observacion": observacion,
-                    **data,
+            valores_posibles: dict[str, Any] = {
+                "id_cliente": data.get("id_cliente") or None,
+                "id_obra": data.get("id_obra") or None,
+                "id_usuario": data.get("id_usuario") or _resolver_id_usuario_despacho(request),
+                "fecha_despacho": sanitize_text_input(str(data.get("fecha_despacho", "")).strip()) or None,
+                "fecha": sanitize_text_input(str(data.get("fecha_despacho", "")).strip()) or None,
+                "fecha_entrega": sanitize_text_input(str(data.get("fecha_entrega") or "").strip()) or None,
+                "estado": sanitize_text_input(str(data.get("estado", "pendiente")).strip()).lower(),
+                "boleta": sanitize_text_input(str(data.get("boleta", "")).strip()),
+                "numero_despacho": sanitize_text_input(str(data.get("boleta", "")).strip()),
+                "direccion_entrega": sanitize_text_input(
+                    str(data.get("direccion_entrega", data.get("direccion", ""))).strip()
+                ),
+                "direccion": sanitize_text_input(
+                    str(data.get("direccion_entrega", data.get("direccion", ""))).strip()
+                ),
+                "observacion": sanitize_text_input(str(data.get("observacion", "")).strip()),
+            }
+
+            columnas_insertar = [
+                col for col in valores_posibles
+                if col in cols_desp and valores_posibles[col] is not None
+            ]
+            params_insertar = [valores_posibles[col] for col in columnas_insertar]
+
+            pk_col = "id_despacho" if "id_despacho" in cols_desp else "id"
+            placeholders = ", ".join(["%s"] * len(columnas_insertar))
+            cols_sql = ", ".join(columnas_insertar)
+
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"INSERT INTO despacho ({cols_sql}) VALUES ({placeholders}) RETURNING {pk_col};",
+                    params_insertar,
+                )
+                nuevo_id = int(cursor.fetchone()[0])
+
+                detalles = data.get("detalles") if isinstance(data.get("detalles"), list) else []
+                if tabla_det and detalles:
+                    for det in detalles:
+                        det_map: dict[str, Any] = {
+                            "id_despacho": nuevo_id,
+                            "id_articulo": det.get("id_articulo"),
+                            "cantidad": det.get("cantidad", 1),
+                        }
+                        d_cols = [c for c in det_map if c in cols_det and det_map[c] is not None]
+                        d_vals = [det_map[c] for c in d_cols]
+                        d_ph = ", ".join(["%s"] * len(d_cols))
+                        cursor.execute(
+                            f"INSERT INTO {tabla_det} ({', '.join(d_cols)}) VALUES ({d_ph});",
+                            d_vals,
+                        )
+
+            return JsonResponse(
+                {
+                    "id": nuevo_id,
+                    "id_despacho": nuevo_id,
+                    "mensaje": "Despacho registrado correctamente en PostgreSQL.",
                 },
-            },
-            status=201,
+                status=201,
+            )
+
+        return JsonResponse({"error": "Método no permitido."}, status=405)
+
+    except Exception as exc:
+        return JsonResponse(
+            {"error": f"Error PostgreSQL en despachos: {exc}"},
+            status=500,
         )
 
-    return JsonResponse({"error": "Método no permitido."}, status=405)
-```[cite: 5, 6]
 
+@csrf_exempt
+@require_rbac("inventario_bodega", "U")
+def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
+    """PATCH /api/v1/despachos/<id_despacho>/ -> actualiza estado real en PostgreSQL."""
+    if request.method not in ("PATCH", "PUT"):
+        return JsonResponse({"error": "Método no permitido."}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    nuevo_estado = sanitize_text_input(str(data.get("estado", "")).strip()).lower()
+    if not nuevo_estado:
+        return JsonResponse({"error": "estado es obligatorio."}, status=400)
+
+    try:
+        cols_desp = _columnas_tabla_pg("despacho")
+        pk_col = "id_despacho" if "id_despacho" in cols_desp else "id"
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE despacho SET estado = %s WHERE {pk_col} = %s;",
+                [nuevo_estado, id_despacho],
+            )
+        return JsonResponse({"id_despacho": id_despacho, "estado": nuevo_estado}, status=200)
+    except Exception as exc:
+        return JsonResponse(
+            {"error": f"Error PostgreSQL al actualizar despacho: {exc}"},
+            status=500,
+        )
