@@ -1654,45 +1654,243 @@ def api_solicitudes(request: Any) -> JsonResponse:
 @csrf_exempt
 @require_rbac("obras_mantencion", "R")
 def api_obras(request: Any) -> JsonResponse:
-    """GET/POST /api/v1/obras/ -> lista o registra obras en tabla 'obra'."""
+    """GET/POST /api/v1/obras/ -> lista o crea obras reales en PostgreSQL."""
+    from django.db import transaction
+
+    cols_obra = _columnas_tabla_pg("obra")
+    pk_col = "id_obra" if "id_obra" in cols_obra else "id"
+
     if request.method == "GET":
         obras: list[dict[str, Any]] = []
         try:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT id_obra, codigo, descripcion, tipo_obra,
-                           porcentaje_avance, estado, observacion
-                    FROM obra
-                    ORDER BY id_obra DESC;
-                    """
-                )
-                for row in cursor.fetchall():
+                mapa_clientes: dict[Any, str] = {}
+                if _columnas_tabla_pg("cliente"):
+                    cursor.execute("SELECT * FROM cliente;")
+                    cli_cols = [c[0] for c in cursor.description] if cursor.description else []
+                    for r in cursor.fetchall():
+                        c_rec = dict(zip(cli_cols, r))
+                        cid = c_rec.get("id_cliente") or c_rec.get("id")
+                        mapa_clientes[cid] = str(
+                            c_rec.get("razon_social")
+                            or c_rec.get("nombre_razon_social")
+                            or c_rec.get("nombre")
+                            or f"Cliente #{cid}"
+                        )
+
+                mapa_usuarios: dict[Any, str] = {}
+                if _columnas_tabla_pg("usuario"):
+                    cursor.execute("SELECT * FROM usuario;")
+                    usr_cols = [c[0] for c in cursor.description] if cursor.description else []
+                    for r in cursor.fetchall():
+                        u_rec = dict(zip(usr_cols, r))
+                        uid = u_rec.get("id_usuario") or u_rec.get("id")
+                        nombre_u = (
+                            f"{u_rec.get('nombres', '')} {u_rec.get('apellidos', '')}".strip()
+                            or u_rec.get("nombre")
+                            or u_rec.get("username")
+                            or f"Usuario #{uid}"
+                        )
+                        mapa_usuarios[uid] = str(nombre_u)
+
+                cursor.execute(f"SELECT * FROM obra ORDER BY {pk_col} DESC;")
+                filas = cursor.fetchall()
+                headers = [c[0] for c in cursor.description] if cursor.description else []
+
+                for row in filas:
+                    rec = dict(zip(headers, row))
+                    if "activo" in rec and rec["activo"] is False:
+                        continue
+                    oid = rec.get(pk_col)
+                    uid = rec.get("id_usuario")
+                    cid = rec.get("id_cliente")
+                    nombre_obra = (
+                        rec.get("nombre")
+                        or rec.get("descripcion")
+                        or rec.get("codigo")
+                        or f"Obra #{oid}"
+                    )
                     obras.append(
                         {
-                            "id": row[0],
-                            "id_obra": row[0],
-                            "codigo": row[1],
-                            "codigo_obra": row[1],
-                            "nombre": row[2] or row[1],
-                            "descripcion": row[2],
-                            "tipo": row[3],
-                            "porcentaje_avance": row[4],
-                            "estado": row[5],
-                            "observacion": row[6],
+                            "id": oid,
+                            "id_obra": oid,
+                            "codigo": rec.get("codigo") or f"OB-{str(oid).zfill(3)}",
+                            "nombre": nombre_obra,
+                            "descripcion": rec.get("descripcion") or nombre_obra,
+                            "tipo": rec.get("tipo") or rec.get("tipo_obra") or "instalación",
+                            "estado": rec.get("estado") or "pendiente",
+                            "porcentaje_avance": rec.get("porcentaje_avance", 0),
+                            "observacion": rec.get("observacion") or "",
+                            "id_cliente": cid,
+                            "cliente_nombre": mapa_clientes.get(cid, "Sin cliente"),
+                            "id_usuario": uid,
+                            "usuario_nombre": mapa_usuarios.get(uid, "Sin asignar"),
+                            "fecha_inicio": str(rec["fecha_inicio"]) if rec.get("fecha_inicio") else "",
+                            "fecha_termino": str(rec["fecha_termino"]) if rec.get("fecha_termino") else "",
+                            "activo": rec.get("activo", True),
                         }
                     )
-        except Exception:
-            obras = []
+        except Exception as exc:
+            return JsonResponse({"obras": [], "total": 0, "warning": str(exc)}, status=200)
 
         return JsonResponse({"obras": obras, "total": len(obras)}, status=200)
 
     if request.method == "POST":
-        return registrar_avance_obra(request)
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        if "nombre" not in data and "codigo_obra" in data:
+            return registrar_avance_obra(request)
+
+        nombre = sanitize_text_input(str(data.get("nombre", "")).strip())
+        if not nombre:
+            return JsonResponse({"error": "El nombre de la obra es obligatorio."}, status=400)
+
+        id_usr = int(data.get("id_usuario") or _resolver_id_usuario_despacho(request) or 1)
+        id_cli = data.get("id_cliente")
+        tipo = sanitize_text_input(str(data.get("tipo") or "instalación").strip())
+        estado = sanitize_text_input(str(data.get("estado") or "pendiente").strip()).lower()
+        fecha_inicio = data.get("fecha_inicio") or None
+        fecha_termino = data.get("fecha_termino") or None
+        activo = bool(data.get("activo", True))
+
+        campos: list[str] = []
+        valores: list[Any] = []
+        candidatos = {
+            "id_usuario": id_usr,
+            "id_cliente": int(id_cli) if id_cli not in (None, "") else 1,
+            "nombre": nombre,
+            "tipo": tipo,
+            "estado": estado,
+            "fecha_inicio": fecha_inicio,
+            "fecha_termino": fecha_termino,
+            "activo": activo,
+        }
+        for col, val in candidatos.items():
+            if col in cols_obra:
+                campos.append(col)
+                valores.append(val)
+
+        try:
+            placeholders = ", ".join(["%s"] * len(campos))
+            cols_sql = ", ".join(campos)
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
+                    cursor.execute(
+                        f"INSERT INTO obra ({cols_sql}) VALUES ({placeholders}) RETURNING {pk_col};",
+                        valores,
+                    )
+                    nuevo_id = cursor.fetchone()[0]
+            return JsonResponse(
+                {
+                    "id": nuevo_id,
+                    "id_obra": nuevo_id,
+                    "nombre": nombre,
+                    "tipo": tipo,
+                    "estado": estado,
+                    "activo": activo,
+                },
+                status=201,
+            )
+        except Exception as exc:
+            return JsonResponse({"error": f"Error PostgreSQL al crear obra: {exc}"}, status=500)
 
     return JsonResponse({"error": "Método no permitido."}, status=405)
 
 
+@csrf_exempt
+@require_rbac("inventario_bodega", "U")
+def api_obra_detalle(request: Any, id_obra: int) -> JsonResponse:
+    """PUT/PATCH /api/v1/obras/<id_obra>/ -> edita o desactiva una obra."""
+    from django.db import transaction
+
+    if request.method not in ("PUT", "PATCH"):
+        return JsonResponse({"error": "Método no permitido."}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    cols_obra = _columnas_tabla_pg("obra")
+    pk_col = "id_obra" if "id_obra" in cols_obra else "id"
+    id_usr = _resolver_id_usuario_despacho(request) or 1
+
+    updates: list[str] = []
+    params: list[Any] = []
+    for campo in ("id_usuario", "id_cliente", "nombre", "tipo", "estado", "fecha_inicio", "fecha_termino", "activo"):
+        if campo in data and campo in cols_obra:
+            val = data[campo]
+            if val == "" and campo in ("fecha_inicio", "fecha_termino"):
+                val = None
+            updates.append(f"{campo} = %s")
+            params.append(val)
+
+    if not updates:
+        return JsonResponse({"id_obra": id_obra}, status=200)
+
+    params.append(id_obra)
+    try:
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
+                cursor.execute(
+                    f"UPDATE obra SET {', '.join(updates)} WHERE {pk_col} = %s;",
+                    params,
+                )
+        return JsonResponse({"id_obra": id_obra, "actualizado": True}, status=200)
+    except Exception as exc:
+        return JsonResponse({"error": f"Error PostgreSQL al actualizar obra: {exc}"}, status=500)
+
+
+@csrf_exempt
+@require_rbac("inventario_bodega", "C")
+def api_obra_observaciones(request: Any, id_obra: int) -> JsonResponse:
+    """POST /api/v1/obras/<id_obra>/observaciones/ -> registra observación en obra."""
+    from django.db import transaction
+
+    if request.method != "POST":
+        return JsonResponse({"error": "Método no permitido."}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+
+    obs = sanitize_text_input(str(data.get("observacion") or data.get("detalle") or "").strip())
+    if not obs:
+        return JsonResponse({"error": "La observación es obligatoria."}, status=400)
+
+    id_usr = _resolver_id_usuario_despacho(request) or 1
+    try:
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
+                for tabla_obs in ("observacion_obra", "obra_observacion"):
+                    cols_t = _columnas_tabla_pg(tabla_obs)
+                    if cols_t:
+                        c_list = []
+                        v_list = []
+                        for col, val in (
+                            ("id_obra", id_obra),
+                            ("id_usuario", id_usr),
+                            ("observacion", obs),
+                            ("detalle", obs),
+                        ):
+                            if col in cols_t:
+                                c_list.append(col)
+                                v_list.append(val)
+                        cursor.execute(
+                            f"INSERT INTO {tabla_obs} ({', '.join(c_list)}) VALUES ({', '.join(['%s']*len(c_list))});",
+                            v_list,
+                        )
+                        break
+        return JsonResponse({"id_obra": id_obra, "observacion": obs}, status=201)
+    except Exception as exc:
+        return JsonResponse({"error": f"Error al guardar observación: {exc}"}, status=500)
 @csrf_exempt
 @require_rbac("inventario_bodega", "R")
 def api_despachos(request: Any) -> JsonResponse:
@@ -2002,3 +2200,316 @@ def api_despacho_detalle(request: Any, id_despacho: int) -> JsonResponse:
             {"error": f"Error PostgreSQL al actualizar despacho: {exc}"},
             status=500,
         )
+
+
+@csrf_exempt
+@require_rbac("inventario_bodega", "R")
+def api_recepciones(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/recepciones/ -> lista o registra recepciones de compra."""
+    from django.db import transaction
+
+    tabla_rec = None
+    for candidata in ("recepcion_compra", "recepcion", "recepciones"):
+        if _columnas_tabla_pg(candidata):
+            tabla_rec = candidata
+            break
+
+    if request.method == "GET":
+        recepciones: list[dict[str, Any]] = []
+        try:
+            with connection.cursor() as cursor:
+                mapa_facturas: dict[Any, dict[str, Any]] = {}
+                mapa_prov: dict[Any, str] = {}
+                if _columnas_tabla_pg("proveedor"):
+                    cursor.execute("SELECT * FROM proveedor;")
+                    p_cols = [c[0] for c in cursor.description] if cursor.description else []
+                    for r in cursor.fetchall():
+                        pr = dict(zip(p_cols, r))
+                        pid = pr.get("id_proveedor") or pr.get("id")
+                        mapa_prov[pid] = str(
+                            pr.get("razon_social") or pr.get("nombre") or f"Proveedor #{pid}"
+                        )
+
+                if _columnas_tabla_pg("factura"):
+                    cursor.execute("SELECT * FROM factura;")
+                    f_cols = [c[0] for c in cursor.description] if cursor.description else []
+                    for r in cursor.fetchall():
+                        fr = dict(zip(f_cols, r))
+                        fid = fr.get("id_factura") or fr.get("id")
+                        pid = fr.get("id_proveedor")
+                        mapa_facturas[fid] = {
+                            "numero": fr.get("numero_factura") or fr.get("numero") or f"FAC-{fid}",
+                            "proveedor": mapa_prov.get(pid, "Sin proveedor"),
+                        }
+
+                if not tabla_rec:
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS recepcion_compra (
+                            id_recepcion SERIAL PRIMARY KEY,
+                            id_factura INTEGER NOT NULL,
+                            id_usuario INTEGER DEFAULT 1,
+                            fecha_entrega DATE,
+                            fecha_recepcion DATE,
+                            firma VARCHAR(255),
+                            observaciones TEXT,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                        """
+                    )
+                    tabla_rec = "recepcion_compra"
+
+                cols_r = _columnas_tabla_pg(tabla_rec)
+                pk_r = "id_recepcion" if "id_recepcion" in cols_r else "id"
+                cursor.execute(f"SELECT * FROM {tabla_rec} ORDER BY {pk_r} DESC;")
+                r_cols = [c[0] for c in cursor.description] if cursor.description else []
+                for row in cursor.fetchall():
+                    rec = dict(zip(r_cols, row))
+                    rid = rec.get(pk_r)
+                    fid = rec.get("id_factura")
+                    f_info = mapa_facturas.get(fid, {})
+                    recepciones.append(
+                        {
+                            "id": rid,
+                            "id_recepcion": rid,
+                            "id_factura": fid,
+                            "factura_numero": f_info.get("numero", f"#{fid}"),
+                            "proveedor_nombre": f_info.get("proveedor", "Proveedor"),
+                            "fecha_entrega": str(rec.get("fecha_entrega") or ""),
+                            "fecha_recepcion": str(rec.get("fecha_recepcion") or ""),
+                            "firma": rec.get("firma") or rec.get("firma_recepcion") or "",
+                            "observaciones": rec.get("observaciones") or rec.get("observacion") or "",
+                        }
+                    )
+        except Exception as exc:
+            return JsonResponse({"recepciones": [], "warning": str(exc)}, status=200)
+
+        return JsonResponse({"recepciones": recepciones, "total": len(recepciones)}, status=200)
+
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        id_factura = data.get("id_factura")
+        if not id_factura:
+            return JsonResponse({"error": "Debe seleccionar una factura."}, status=400)
+
+        fecha_entrega = data.get("fecha_entrega") or None
+        fecha_recepcion = data.get("fecha_recepcion") or None
+        firma = sanitize_text_input(str(data.get("firma") or "").strip())
+        observaciones = sanitize_text_input(str(data.get("observaciones") or "").strip())
+        id_usr = _resolver_id_usuario_despacho(request) or 1
+
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
+                    if not tabla_rec:
+                        cursor.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS recepcion_compra (
+                                id_recepcion SERIAL PRIMARY KEY,
+                                id_factura INTEGER NOT NULL,
+                                id_usuario INTEGER DEFAULT 1,
+                                fecha_entrega DATE,
+                                fecha_recepcion DATE,
+                                firma VARCHAR(255),
+                                observaciones TEXT,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            );
+                            """
+                        )
+                        tabla_rec = "recepcion_compra"
+
+                    cols_r = _columnas_tabla_pg(tabla_rec)
+                    pk_r = "id_recepcion" if "id_recepcion" in cols_r else "id"
+                    candidatos = {
+                        "id_factura": int(id_factura),
+                        "id_usuario": int(id_usr),
+                        "fecha_entrega": fecha_entrega,
+                        "fecha_recepcion": fecha_recepcion,
+                        "firma": firma,
+                        "firma_recepcion": firma,
+                        "observaciones": observaciones,
+                        "observacion": observaciones,
+                    }
+                    c_list = [k for k in candidatos if k in cols_r]
+                    v_list = [candidatos[k] for k in c_list]
+                    cursor.execute(
+                        f"INSERT INTO {tabla_rec} ({', '.join(c_list)}) VALUES ({', '.join(['%s']*len(c_list))}) RETURNING {pk_r};",
+                        v_list,
+                    )
+                    nuevo_id = cursor.fetchone()[0]
+            return JsonResponse(
+                {
+                    "id": nuevo_id,
+                    "id_recepcion": nuevo_id,
+                    "id_factura": int(id_factura),
+                    "fecha_entrega": fecha_entrega or "",
+                    "fecha_recepcion": fecha_recepcion or "",
+                    "firma": firma,
+                    "observaciones": observaciones,
+                },
+                status=201,
+            )
+        except Exception as exc:
+            return JsonResponse({"error": f"Error PostgreSQL al guardar recepción: {exc}"}, status=500)
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
+
+@csrf_exempt
+@require_rbac("inventario_bodega", "R")
+def api_reportes(request: Any) -> JsonResponse:
+    """GET/POST /api/v1/reportes/ -> lista o registra diagnósticos / reportes técnicos."""
+    from django.db import transaction
+
+    tabla_rep = None
+    for candidata in ("reporte_tecnico", "diagnostico_tecnico", "diagnostico", "reporte"):
+        if _columnas_tabla_pg(candidata):
+            tabla_rep = candidata
+            break
+
+    if request.method == "GET":
+        reportes: list[dict[str, Any]] = []
+        try:
+            with connection.cursor() as cursor:
+                mapa_obras: dict[Any, dict[str, Any]] = {}
+                if _columnas_tabla_pg("obra"):
+                    cursor.execute("SELECT * FROM obra;")
+                    o_cols = [c[0] for c in cursor.description] if cursor.description else []
+                    for r in cursor.fetchall():
+                        orec = dict(zip(o_cols, r))
+                        oid = orec.get("id_obra") or orec.get("id")
+                        mapa_obras[oid] = {
+                            "nombre": orec.get("nombre") or orec.get("codigo") or f"Obra #{oid}",
+                            "tipo": orec.get("tipo") or orec.get("tipo_obra") or "diagnóstico",
+                        }
+
+                mapa_usuarios: dict[Any, str] = {}
+                if _columnas_tabla_pg("usuario"):
+                    cursor.execute("SELECT * FROM usuario;")
+                    u_cols = [c[0] for c in cursor.description] if cursor.description else []
+                    for r in cursor.fetchall():
+                        urec = dict(zip(u_cols, r))
+                        uid = urec.get("id_usuario") or urec.get("id")
+                        mapa_usuarios[uid] = (
+                            f"{urec.get('nombres', '')} {urec.get('apellidos', '')}".strip()
+                            or urec.get("nombre")
+                            or f"Usuario #{uid}"
+                        )
+
+                if not tabla_rep:
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS reporte_tecnico (
+                            id_reporte SERIAL PRIMARY KEY,
+                            id_obra INTEGER NOT NULL,
+                            id_usuario INTEGER NOT NULL,
+                            fecha VARCHAR(50),
+                            observaciones TEXT,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                        """
+                    )
+                    tabla_rep = "reporte_tecnico"
+
+                cols_rep = _columnas_tabla_pg(tabla_rep)
+                pk_rep = "id_reporte" if "id_reporte" in cols_rep else ("id_diagnostico" if "id_diagnostico" in cols_rep else "id")
+                cursor.execute(f"SELECT * FROM {tabla_rep} ORDER BY {pk_rep} DESC;")
+                rep_cols = [c[0] for c in cursor.description] if cursor.description else []
+                for row in cursor.fetchall():
+                    rec = dict(zip(rep_cols, row))
+                    rid = rec.get(pk_rep)
+                    oid = rec.get("id_obra")
+                    uid = rec.get("id_usuario")
+                    o_info = mapa_obras.get(oid, {})
+                    reportes.append(
+                        {
+                            "id": rid,
+                            "id_reporte": rid,
+                            "id_obra": oid,
+                            "obra_nombre": o_info.get("nombre", f"Obra #{oid}"),
+                            "obra_tipo": o_info.get("tipo", "diagnóstico"),
+                            "id_usuario": uid,
+                            "usuario_nombre": mapa_usuarios.get(uid, "Responsable"),
+                            "fecha": str(rec.get("fecha") or rec.get("fecha_reporte") or rec.get("created_at") or ""),
+                            "observaciones": rec.get("observaciones") or rec.get("detalle") or rec.get("diagnostico") or "",
+                        }
+                    )
+        except Exception as exc:
+            return JsonResponse({"reportes": [], "warning": str(exc)}, status=200)
+
+        return JsonResponse({"reportes": reportes, "total": len(reportes)}, status=200)
+
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido."}, status=400)
+
+        id_obra = data.get("id_obra")
+        if not id_obra:
+            return JsonResponse({"error": "Debe seleccionar una obra."}, status=400)
+
+        id_usr = int(data.get("id_usuario") or _resolver_id_usuario_despacho(request) or 1)
+        fecha = sanitize_text_input(str(data.get("fecha") or "").strip())
+        observaciones = sanitize_text_input(str(data.get("observaciones") or data.get("detalle") or "").strip())
+        if not observaciones:
+            return JsonResponse({"error": "El detalle del diagnóstico es obligatorio."}, status=400)
+
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT set_config('app.id_usuario', %s, true);", [str(id_usr)])
+                    if not tabla_rep:
+                        cursor.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS reporte_tecnico (
+                                id_reporte SERIAL PRIMARY KEY,
+                                id_obra INTEGER NOT NULL,
+                                id_usuario INTEGER NOT NULL,
+                                fecha VARCHAR(50),
+                                observaciones TEXT,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            );
+                            """
+                        )
+                        tabla_rep = "reporte_tecnico"
+
+                    cols_rep = _columnas_tabla_pg(tabla_rep)
+                    pk_rep = "id_reporte" if "id_reporte" in cols_rep else ("id_diagnostico" if "id_diagnostico" in cols_rep else "id")
+                    candidatos = {
+                        "id_obra": int(id_obra),
+                        "id_usuario": id_usr,
+                        "fecha": fecha,
+                        "fecha_reporte": fecha,
+                        "observaciones": observaciones,
+                        "detalle": observaciones,
+                        "diagnostico": observaciones,
+                    }
+                    c_list = [k for k in candidatos if k in cols_rep]
+                    v_list = [candidatos[k] for k in c_list]
+                    cursor.execute(
+                        f"INSERT INTO {tabla_rep} ({', '.join(c_list)}) VALUES ({', '.join(['%s']*len(c_list))}) RETURNING {pk_rep};",
+                        v_list,
+                    )
+                    nuevo_id = cursor.fetchone()[0]
+            return JsonResponse(
+                {
+                    "id": nuevo_id,
+                    "id_reporte": nuevo_id,
+                    "id_obra": int(id_obra),
+                    "id_usuario": id_usr,
+                    "fecha": fecha,
+                    "observaciones": observaciones,
+                },
+                status=201,
+            )
+        except Exception as exc:
+            return JsonResponse({"error": f"Error PostgreSQL al guardar diagnóstico: {exc}"}, status=500)
+
+    return JsonResponse({"error": "Método no permitido."}, status=405)
+
