@@ -1,4 +1,4 @@
-"""Capa Controlador (MVC): Enrutamiento central de URLs."""
+﻿"""Capa Controlador (MVC): Enrutamiento central de URLs."""
 
 from django.contrib import admin
 from django.urls import path
@@ -10,6 +10,7 @@ from views.api_views import (
     api_categorias,
     api_clientes,
     api_crear_inventario,
+    api_despacho_detalle,
     api_despachos,
     api_health,
     api_listar_inventario,
@@ -32,15 +33,20 @@ urlpatterns = [
     path("api/v1/obras/", api_obras, name="api_obras"),
     path("api/v1/obras/avance/", registrar_avance_obra, name="obra_avance"),
     path("api/v1/despachos/", api_despachos, name="api_despachos"),
+    path("api/v1/despachos/<int:id_despacho>/", api_despacho_detalle, name="api_despacho_detalle"),
     path("api/v1/inventario/items/", api_listar_inventario, name="inventario_listar"),
-    path("api/v1/inventario/items/crear/", api_crear_inventario, name="inventario_crear"),
+    path("api/v1/inventario/items/crear/", api_crear_inventario,
+    api_despacho_detalle,
+    api_despachos, name="inventario_crear"),
     path("api/v1/inventario/search/", api_buscar_inventario, name="inventario_search"),
     path("api/v1/categorias/", api_categorias, name="api_categorias"),
     path("api/v1/ubicaciones/", api_ubicaciones, name="api_ubicaciones"),
     path("api/v1/inventario/categorias/", api_categorias, name="inventario_categorias"),
     path("api/v1/inventario/ubicaciones/", api_ubicaciones, name="inventario_ubicaciones"),
-    path("api/v1/mermas/", api_mermas, name="api_mermas"),
-    path("api/v1/inventario/mermas/", api_mermas, name="inventario_mermas"),
+    path("api/v1/mermas/", api_mermas,
+    api_obras, name="api_mermas"),
+    path("api/v1/inventario/mermas/", api_mermas,
+    api_obras, name="inventario_mermas"),
     path("api/v1/proveedores/", api_proveedores, name="api_proveedores"),
     path("api/v1/inventario/proveedores/", api_proveedores, name="inventario_proveedores"),
     path("api/v1/clientes/", api_clientes, name="api_clientes"),
