@@ -442,7 +442,7 @@ export default function Dashboard({ rol = 'admin' }) {
 
           <div className="d-flex flex-wrap align-items-center gap-2" data-tour="header-acciones">
             {/* Filtro global por Bodega */}
-            <div className="d-flex align-items-center gap-2">
+            <div className="d-flex align-items-center gap-2" data-tour="filtro-bodega">
               <i className="bi bi-funnel text-muted"></i>
               <select
                 className="form-select form-select-sm rounded-pill bg-light border-secondary-subtle fw-semibold"
@@ -494,7 +494,7 @@ export default function Dashboard({ rol = 'admin' }) {
           )}
 
           {/* Acciones Rápidas personalizadas por Rol */}
-          <div className="mb-4">
+          <div className="mb-4" data-tour="acciones-rapidas">
             <div className="d-flex justify-content-between align-items-center mb-2">
               <h6 className="text-uppercase text-muted fw-bold small mb-0" style={{ letterSpacing: '0.06em' }}>
                 Acciones Rápidas · {tema.etiqueta}

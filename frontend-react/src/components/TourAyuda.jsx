@@ -8,39 +8,53 @@ const PASOS_POR_ROL = {
       element: '[data-tour="sidebar"]',
       popover: {
         title: 'Menú de Administración',
-        description: 'Desde aquí accedes a usuarios, autorizaciones, inventario, operaciones en terreno, finanzas y entidades registradas.',
+        description:
+          'Desde aquí accedes a todos los módulos: usuarios, autorizaciones, inventario, categorías y bodegas, operaciones en terreno y finanzas.',
         side: 'right',
       },
     },
     {
-      element: '[data-tour="header-acciones"]',
+      element: '[data-tour="filtro-bodega"]',
       popover: {
-        title: 'Estado del Sistema y Actualización',
-        description: 'Verifica si la API está en línea o presiona Actualizar para refrescar los indicadores en tiempo real.',
+        title: 'Filtro Global por Bodega',
+        description:
+          'Selecciona una bodega específica para filtrar en tiempo real los KPIs, las alertas y el listado de inventario, o vuelve a ver todas juntas.',
+        side: 'bottom',
+      },
+    },
+    {
+      element: '[data-tour="acciones-rapidas"]',
+      popover: {
+        title: 'Acciones Rápidas de Administrador',
+        description:
+          'Accesos directos a tus tareas más frecuentes: crear cuentas, revisar autorizaciones, añadir artículos y administrar categorías y bodegas.',
         side: 'bottom',
       },
     },
     {
       element: '[data-tour="kpis"]',
       popover: {
-        title: 'Resumen General (KPIs)',
-        description: 'Revisa de un vistazo el total de artículos, stock óptimo, alertas críticas o preventivas y la valorización en CLP.',
+        title: 'Indicadores y Valorización (KPIs)',
+        description:
+          'Visualiza total de artículos, stock óptimo, alertas críticas o preventivas y la valorización estimada en CLP según la bodega filtrada.',
         side: 'bottom',
       },
     },
     {
       element: '[data-tour="alertas-stock"]',
       popover: {
-        title: 'Alertas de Reposición Prioritaria',
-        description: 'Aquí aparecen los insumos que requieren reposición urgente o preventiva, junto con un acceso directo al inventario.',
+        title: 'Inventario General y Alertas',
+        description:
+          'Alterna entre Todo el Inventario o solo Alertas Prioritarias y usa el buscador para encontrar artículos por nombre, código o bodega.',
         side: 'top',
       },
     },
     {
       element: '[data-tour="stock-ubicacion"]',
       popover: {
-        title: 'Distribución por Ubicación',
-        description: 'Compara cómo se reparten tus artículos entre las distintas bodegas o ubicaciones.',
+        title: 'Stock por Bodega (Interactivo)',
+        description:
+          'Haz clic sobre cualquier bodega de esta lista para filtrar todo el panel al instante.',
         side: 'left',
       },
     },
@@ -48,7 +62,8 @@ const PASOS_POR_ROL = {
       element: '.fyag-a11y-widget',
       popover: {
         title: 'Botón de Accesibilidad',
-        description: 'Si necesitas leer más cómodo, puedes agrandar el texto (A+ / A-), activar alto contraste, escala de grises o resaltar botones.',
+        description:
+          'Agranda el texto (A+ / A-), activa alto contraste, escala de grises o resalta botones cuando lo necesites.',
         side: 'left',
       },
     },
@@ -58,24 +73,54 @@ const PASOS_POR_ROL = {
       element: '[data-tour="sidebar"]',
       popover: {
         title: 'Menú de Bodega',
-        description: 'Encuentra aquí inventario, alta de artículos, cardex, recepción de compras, despachos, escáner y registro de mermas.',
+        description:
+          'Accede a inventario, alta de artículos, categorías y bodegas, cardex, recepción de compras, despachos, escáner y mermas.',
         side: 'right',
+      },
+    },
+    {
+      element: '[data-tour="filtro-bodega"]',
+      popover: {
+        title: 'Filtrar por Bodega',
+        description:
+          'Elige la bodega que quieres revisar para ver exactamente qué insumos y alertas hay en ese sector.',
+        side: 'bottom',
+      },
+    },
+    {
+      element: '[data-tour="acciones-rapidas"]',
+      popover: {
+        title: 'Accesos Rápidos de Bodega',
+        description:
+          'Entra con un clic a añadir artículos, escanear códigos de barras, recibir compras o gestionar despachos.',
+        side: 'bottom',
       },
     },
     {
       element: '[data-tour="kpis"]',
       popover: {
         title: 'Control de Existencias',
-        description: 'Monitorea artículos registrados, niveles óptimos y alertas de stock para evitar quiebres en bodega.',
+        description:
+          'Monitorea artículos registrados, niveles óptimos, alertas de stock y el total de unidades físicas en bodega.',
         side: 'bottom',
       },
     },
     {
       element: '[data-tour="alertas-stock"]',
       popover: {
-        title: 'Reposición Urgente',
-        description: 'Prioriza los productos con stock crítico o bajo antes de que falten en operación.',
+        title: 'Inventario y Reposición',
+        description:
+          'Revisa todo el inventario o filtra solo las alertas críticas, usando el buscador rápido por nombre o código de barras.',
         side: 'top',
+      },
+    },
+    {
+      element: '[data-tour="stock-ubicacion"]',
+      popover: {
+        title: 'Distribución por Bodega',
+        description:
+          'Haz clic en una bodega para ver solo sus productos en la tabla y en los indicadores.',
+        side: 'left',
       },
     },
     {
@@ -92,16 +137,36 @@ const PASOS_POR_ROL = {
       element: '[data-tour="sidebar"]',
       popover: {
         title: 'Herramientas en Terreno',
-        description: 'Accede a diagnóstico técnico, solicitud de artículos, escáner, gestión de obras y registro de mermas.',
+        description:
+          'Accede a diagnóstico técnico, solicitud de artículos, escáner, gestión de obras y registro de mermas.',
         side: 'right',
       },
     },
     {
-      element: '[data-tour="kpis"]',
+      element: '[data-tour="acciones-rapidas"]',
       popover: {
-        title: 'Disponibilidad de Insumos',
-        description: 'Consulta rápidamente el estado general del inventario y las alertas activas.',
+        title: 'Acciones Rápidas de Terreno',
+        description:
+          'Atajos directos para registrar un diagnóstico, solicitar materiales, escanear un insumo o revisar tus obras activas.',
         side: 'bottom',
+      },
+    },
+    {
+      element: '[data-tour="filtro-bodega"]',
+      popover: {
+        title: 'Consultar Stock por Bodega',
+        description:
+          'Filtra por bodega antes de solicitar materiales para saber dónde hay disponibilidad.',
+        side: 'bottom',
+      },
+    },
+    {
+      element: '[data-tour="alertas-stock"]',
+      popover: {
+        title: 'Buscador de Insumos',
+        description:
+          'Busca rápidamente cualquier repuesto o material por nombre o código para verificar su stock actual.',
+        side: 'top',
       },
     },
     {
@@ -118,16 +183,36 @@ const PASOS_POR_ROL = {
       element: '[data-tour="sidebar"]',
       popover: {
         title: 'Módulos Financieros',
-        description: 'Revisa reportes financieros, compras, gestión de facturas, proveedores y clientes.',
+        description:
+          'Revisa reportes financieros, compras, gestión de facturas, proveedores y clientes.',
         side: 'right',
+      },
+    },
+    {
+      element: '[data-tour="acciones-rapidas"]',
+      popover: {
+        title: 'Accesos Rápidos de Finanzas',
+        description:
+          'Ingresa directo al módulo de compras, facturas, reporte financiero o administración de proveedores.',
+        side: 'bottom',
       },
     },
     {
       element: '[data-tour="kpis"]',
       popover: {
         title: 'Indicadores y Valorización',
-        description: 'Visualiza el resumen del inventario y la valorización estimada en pesos chilenos (CLP).',
+        description:
+          'Visualiza el resumen del inventario y la valorización estimada en pesos chilenos (CLP), filtrable por bodega.',
         side: 'bottom',
+      },
+    },
+    {
+      element: '[data-tour="stock-ubicacion"]',
+      popover: {
+        title: 'Valorización por Bodega',
+        description:
+          'Haz clic en una bodega para recalcular los indicadores y la valorización de esa ubicación.',
+        side: 'left',
       },
     },
     {
@@ -144,15 +229,35 @@ const PASOS_POR_ROL = {
       element: '[data-tour="sidebar"]',
       popover: {
         title: 'Panel de Supervisión',
-        description: 'Revisa autorizaciones pendientes, inventario, cardex, mermas, diagnóstico, obras y reportes financieros.',
+        description:
+          'Revisa autorizaciones pendientes, inventario, cardex, mermas, diagnóstico, obras y reportes financieros.',
         side: 'right',
+      },
+    },
+    {
+      element: '[data-tour="acciones-rapidas"]',
+      popover: {
+        title: 'Control Rápido de Supervisión',
+        description:
+          'Accede al instante a autorizaciones pendientes, revisión de mermas, control de obras y movimientos de cardex.',
+        side: 'bottom',
+      },
+    },
+    {
+      element: '[data-tour="filtro-bodega"]',
+      popover: {
+        title: 'Supervisión por Bodega',
+        description:
+          'Filtra por ubicación para auditar el stock, las alertas críticas y la valorización de cada bodega.',
+        side: 'bottom',
       },
     },
     {
       element: '[data-tour="alertas-stock"]',
       popover: {
-        title: 'Seguimiento de Alertas',
-        description: 'Supervisa los artículos críticos o bajos y accede rápido al inventario completo.',
+        title: 'Seguimiento de Inventario y Alertas',
+        description:
+          'Alterna entre el inventario completo y las alertas prioritarias para anticipar quiebres de stock.',
         side: 'top',
       },
     },
@@ -179,7 +284,7 @@ export default function TourAyuda({ rol = 'admin', autoIniciar = true }) {
     if (!stepsToRun.length) return;
     setMenuAbierto(false);
 
-    const claveVista = `fyag_tour_visto_${rol}`;
+    const claveVista = `fyag_tour_visto_v2_${rol}`;
 
     const instancia = driver({
       showProgress: true,
@@ -205,7 +310,7 @@ export default function TourAyuda({ rol = 'admin', autoIniciar = true }) {
 
   useEffect(() => {
     if (!autoIniciar) return;
-    const claveVista = `fyag_tour_visto_${rol}`;
+    const claveVista = `fyag_tour_visto_v2_${rol}`;
     let yaVisto = false;
     try {
       yaVisto = localStorage.getItem(claveVista) === 'true';
@@ -280,9 +385,9 @@ export default function TourAyuda({ rol = 'admin', autoIniciar = true }) {
                 key={paso.element}
                 type="button"
                 onClick={() => verSeccionEspecifica(paso.element)}
-                className="btn btn-outline-secondary btn-sm w-100 justify-content-start text-start"
+                className="btn btn-outline-secondary btn-sm w-100 d-flex align-items-center gap-2 text-start"
               >
-                <i className="bi bi-search"></i>
+                <i className="bi bi-search flex-shrink-0"></i>
                 <span className="text-truncate">{paso.popover.title}</span>
               </button>
             ))}
