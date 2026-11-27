@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const API_BASE_URL = 'https://proyectoalpha.onrender.com/api/v1';
+import { apiFetch } from '../../services/api';
 
 export default function RegistrarMerma() {
     const navigate = useNavigate();
@@ -33,37 +32,13 @@ export default function RegistrarMerma() {
         justificacion: ''
     });
 
-    const obtenerHeadersAuth = () => {
-        const token =
-            localStorage.getItem('token') ||
-            localStorage.getItem('access_token') ||
-            localStorage.getItem('jwt') ||
-            sessionStorage.getItem('token') ||
-            sessionStorage.getItem('access_token') ||
-            '';
-        const headers = {
-            'Content-Type': 'application/json'
-        };
-        if (token) {
-            headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-        }
-        return headers;
-    };
-
     useEffect(() => {
         let activo = true;
         const cargarArticulos = async () => {
             setCargandoArticulos(true);
             try {
-                const resp = await fetch(`${API_BASE_URL}/inventario/items/`, {
-                    method: 'GET',
-                    headers: obtenerHeadersAuth()
-                });
-                if (!resp.ok) {
-                    throw new Error(`HTTP ${resp.status}`);
-                }
-                const data = await resp.json();
-                const lista = Array.isArray(data) ? data : (data.items || []);
+                const data = await apiFetch('/inventario/items/');
+                const lista = Array.isArray(data) ? data : (data.items || data.results || []);
                 if (activo) {
                     const normalizados = lista.map((item) => ({
                         id_articulo: item.id_articulo ?? item.id,
@@ -136,7 +111,6 @@ export default function RegistrarMerma() {
 
         const payload = {
             id_articulo: Number(formData.id_articulo),
-            articulo: articuloSeleccionado.nombre,
             fecha: formData.fecha.replace('T', ' '),
             motivo: motivoFinal,
             cantidad: cantNum,
@@ -145,17 +119,10 @@ export default function RegistrarMerma() {
 
         setGuardando(true);
         try {
-            const resp = await fetch(`${API_BASE_URL}/mermas/`, {
+            await apiFetch('/mermas/', {
                 method: 'POST',
-                headers: obtenerHeadersAuth(),
                 body: JSON.stringify(payload)
             });
-
-            const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) {
-                alert(data.error || `No se pudo guardar la merma (HTTP ${resp.status}).`);
-                return;
-            }
 
             setArticulos((prev) =>
                 prev.map((art) =>
@@ -179,7 +146,7 @@ export default function RegistrarMerma() {
             });
         } catch (err) {
             console.error('Error al registrar merma:', err);
-            alert('Error de conexión al registrar la merma.');
+            alert(err?.message || 'Error de conexión al registrar la merma.');
         } finally {
             setGuardando(false);
         }
